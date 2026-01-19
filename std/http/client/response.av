@@ -1,0 +1,20 @@
+pckg std.http.client;
+
+import std.json;
+
+// Satisfies file-to-struct mapping for response.av.
+struct response {}
+
+pub struct HttpResponse {
+    status | int
+    headers | dict<string>
+    body | bytes
+}
+
+pub fun (r | HttpResponse).text() | string {
+    return r.body.toString();
+}
+
+pub fun (r | HttpResponse).json() | any {
+    return json.parse(r.body.toString());
+}

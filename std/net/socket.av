@@ -1,0 +1,40 @@
+pckg std.net;
+
+// Satisfies file-to-struct mapping for socket.av.
+struct socket {}
+
+pub struct Socket {
+    handle | any
+}
+
+pub fun (s | Socket).read(n | int) | bytes {
+    return __builtin_socket_read(s.handle, n);
+}
+
+pub fun (s | Socket).readAll() | bytes {
+    var buf | bytes = fromString("");
+    while (true) {
+        var chunk | bytes = s.read(1024);
+        if (len(chunk) == 0) {
+            break;
+        }
+        buf = buf.concat(chunk);
+    }
+    return buf;
+}
+
+pub fun (s | Socket).readString() | string {
+    return s.readAll().toString();
+}
+
+pub fun (s | Socket).write(data | bytes) | int {
+    return __builtin_socket_write(s.handle, data);
+}
+
+pub fun (s | Socket).writeString(data | string) | int {
+    return s.write(fromString(data));
+}
+
+pub fun (s | Socket).close() | void {
+    __builtin_socket_close(s.handle);
+}

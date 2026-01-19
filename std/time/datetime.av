@@ -1,0 +1,44 @@
+pckg std.time;
+
+// Satisfies file-to-struct mapping for datetime.av.
+struct datetime {}
+
+pub struct DateTime {
+    timestamp | int
+}
+
+pub fun (dt | DateTime).year() | int {
+    return __builtin_time_year(dt.timestamp);
+}
+
+pub fun (dt | DateTime).month() | int {
+    return __builtin_time_month(dt.timestamp);
+}
+
+pub fun (dt | DateTime).day() | int {
+    return __builtin_time_day(dt.timestamp);
+}
+
+pub fun (dt | DateTime).hour() | int {
+    return __builtin_time_hour(dt.timestamp);
+}
+
+pub fun (dt | DateTime).minute() | int {
+    return __builtin_time_minute(dt.timestamp);
+}
+
+pub fun (dt | DateTime).second() | int {
+    return __builtin_time_second(dt.timestamp);
+}
+
+pub fun (dt | DateTime).add(d | Duration) | DateTime {
+    return DateTime{timestamp = dt.timestamp + d.nanos};
+}
+
+pub fun (dt | DateTime).sub(d | Duration) | DateTime {
+    return DateTime{timestamp = dt.timestamp - d.nanos};
+}
+
+pub fun (dt | DateTime).format(fmt | string) | string {
+    return formatDateTime(dt, fmt);
+}

@@ -1,0 +1,27 @@
+pckg std.http.server;
+
+// Satisfies file-to-struct mapping for server.av.
+struct server {}
+
+pub struct HttpServer {
+    handle | any
+}
+
+pub fun listen(host | string, port | int) | HttpServer {
+    var h | any = __builtin_http_listen(host, port);
+    return HttpServer{handle = h};
+}
+
+pub fun (s | HttpServer).serve(handler | fun(HttpRequest) | HttpResponse) | void {
+    while (true) {
+        var raw | dict<any> = __builtin_http_accept(s.handle);
+        var req | HttpRequest = HttpRequest{
+            method = raw["method"],
+            path = raw["path"],
+            headers = raw["headers"],
+            body = raw["body"]
+        };
+        var resp | HttpResponse = handler(req);
+        __builtin_http_respond(raw["__handle"], resp.status, resp.headers, resp.body);
+    }
+}

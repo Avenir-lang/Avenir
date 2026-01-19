@@ -1,0 +1,45 @@
+pckg std.json;
+
+pub fun parse(text | string) | any {
+    return __builtin_json_parse(text);
+}
+
+pub fun stringify(value | any) | string {
+    return __builtin_json_stringify(value);
+}
+
+pub fun asDict(value | any) | dict<any> {
+    if (!isDict(value)) {
+        throw typeError("dict", typeOf(value));
+    }
+    return value;
+}
+
+pub fun asList(value | any) | list<any> {
+    if (!isList(value)) {
+        throw typeError("list", typeOf(value));
+    }
+    return value;
+}
+
+pub fun asString(value | any) | string {
+    if (!isString(value)) {
+        throw typeError("string", typeOf(value));
+    }
+    return value;
+}
+
+pub fun asInt(value | any) | int {
+    if (!isInt(value)) {
+        throw typeError("int", typeOf(value));
+    }
+    return value;
+}
+
+pub fun asBool(value | any) | bool {
+    if (!isBool(value)) {
+        throw typeError("bool", typeOf(value));
+    }
+    return value;
+}
+

@@ -1,0 +1,31 @@
+pckg std.http.server;
+
+import std.json as jsonlib;
+
+// Satisfies file-to-struct mapping for response.av.
+struct response {}
+
+pub struct HttpResponse {
+    status | int
+    headers | dict<string>
+    body | bytes
+}
+
+pub fun text(status | int, body | string) | HttpResponse {
+    var headers | dict<string> = { "Content-Type": "text/plain; charset=utf-8" };
+    return HttpResponse{
+        status = status,
+        headers = headers,
+        body = fromString(body)
+    };
+}
+
+pub fun json(status | int, value | any) | HttpResponse {
+    var headers | dict<string> = { "Content-Type": "application/json" };
+    var text | string = jsonlib.stringify(value);
+    return HttpResponse{
+        status = status,
+        headers = headers,
+        body = fromString(text)
+    };
+}

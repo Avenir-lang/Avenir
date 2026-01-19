@@ -1,0 +1,11 @@
+pckg std.http.server;
+
+// Satisfies file-to-struct mapping for request.av.
+struct request {}
+
+pub struct HttpRequest {
+    method | string
+    path | string
+    headers | dict<string>
+    body | bytes
+}

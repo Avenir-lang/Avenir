@@ -1,0 +1,5 @@
+pckg std.time;
+
+pub fun timeError(msg | string) | error {
+    return error("time: " + msg);
+}

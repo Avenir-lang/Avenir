@@ -1,0 +1,21 @@
+pckg std.fs;
+
+// Satisfies file-to-struct mapping for std.fs.
+struct fs {}
+
+pub fun open(path | string, mode | string) | File {
+    var h | any = __builtin_fs_open(resolvePath(path), mode);
+    return File{handle = h};
+}
+
+pub fun exists(path | string) | bool {
+    return __builtin_fs_exists(resolvePath(path));
+}
+
+pub fun remove(path | string) | void {
+    __builtin_fs_remove(resolvePath(path));
+}
+
+pub fun mkdir(path | string) | void {
+    __builtin_fs_mkdir(resolvePath(path));
+}
