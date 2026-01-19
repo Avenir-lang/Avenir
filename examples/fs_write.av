@@ -1,0 +1,14 @@
+pckg main;
+
+import std.fs;
+
+fun main() | void {
+    try {
+        var f | fs.File = fs.open("example.txt", "w");
+        f.writeString("Hello from std.fs\n");
+        f.close();
+        print("Wrote example.txt");
+    } catch (e | error) {
+        print("FS error: " + errorMessage(e));
+    }
+}

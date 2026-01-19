@@ -1,0 +1,20 @@
+pckg main;
+
+import std.time;
+
+fun main() | void {
+    var now | time.DateTime = time.now();
+    print(now.format("YYYY-MM-DD HH:mm:ss"));
+
+    var dur | time.Duration = time.parseDuration("150ms");
+    time.sleep(dur);
+
+    var dt | time.DateTime = time.parseDateTime("2024-02-03 04:05:06", "YYYY-MM-DD HH:mm:ss");
+    var added | time.DateTime = dt.add(time.parseDuration("2h"));
+    print(added.format("YYYY-MM-DD HH:mm:ss"));
+
+    var a | time.Duration = time.parseDuration("1h");
+    var b | time.Duration = time.parseDuration("30m");
+    var c | time.Duration = a.add(b);
+    print(c.hours());
+}
