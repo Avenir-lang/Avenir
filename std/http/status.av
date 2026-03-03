@@ -1,0 +1,13 @@
+pckg std.http;
+
+pub fun ok() | int {
+    return 200;
+}
+
+pub fun notFound() | int {
+    return 404;
+}
+
+pub fun internalError() | int {
+    return 500;
+}

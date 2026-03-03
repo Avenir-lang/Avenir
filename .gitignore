@@ -1,0 +1,8 @@
+/avenir
+/*.avc
+/bin/
+/dist/
+/out/
+*.log
+*.tmp
+.DS_Store

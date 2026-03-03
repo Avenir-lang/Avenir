@@ -1,0 +1,20 @@
+pckg std.time;
+
+pub fun formatDateTime(dt | DateTime, format | string) | string {
+    var layout | string = toGoLayout(format);
+    return __builtin_time_format_datetime(dt.timestamp, layout);
+}
+
+pub fun parseDateTime(text | string, format | string) | DateTime {
+    var layout | string = toGoLayout(format);
+    var ts | int = __builtin_time_parse_datetime(text, layout);
+    return DateTime{timestamp = ts};
+}
+
+pub fun formatISO8601(dt | DateTime) | string {
+    return formatDateTime(dt, "YYYY-MM-DDTHH:mm:ssZ");
+}
+
+pub fun parseISO8601(text | string) | DateTime {
+    return parseDateTime(text, "YYYY-MM-DDTHH:mm:ssZ");
+}

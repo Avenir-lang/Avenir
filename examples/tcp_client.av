@@ -1,0 +1,17 @@
+pckg main;
+
+import std.net;
+
+fun main() | void {
+    try {
+        var sock | net.Socket = net.connect("0.0.0.0", 5890);
+        sock.writeString("GET / HTTP/1.1\r\nHost: 0.0.0.0\r\n\r\n");
+
+        var resp | string = sock.readString();
+        print(resp);
+
+        sock.close();
+    } catch (e | error) {
+        print("Network error: ${errorMessage(e)}");
+    }
+}

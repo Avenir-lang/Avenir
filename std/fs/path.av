@@ -1,0 +1,26 @@
+pckg std.fs;
+
+pub fun join(a | string, b | string) | string {
+    if (a == "") {
+        return b;
+    }
+    if (b == "") {
+        return a;
+    }
+    if (a.endsWith("/")) {
+        return a + b;
+    }
+    return a + "/" + b;
+}
+
+pub fun basename(path | string) | string {
+    if (path == "") {
+        return "";
+    }
+    var parts | list<string> = path.split("/");
+    var idx | int = parts.length() - 1;
+    if (idx < 0) {
+        return "";
+    }
+    return parts.get(idx);
+}

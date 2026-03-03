@@ -1,0 +1,27 @@
+pckg std.json;
+
+pub fun typeName(value | any) | string {
+    return typeOf(value);
+}
+
+pub fun isDict(value | any) | bool {
+    var name | string = typeOf(value);
+    return name.startsWith("dict<");
+}
+
+pub fun isList(value | any) | bool {
+    var name | string = typeOf(value);
+    return name.startsWith("list<");
+}
+
+pub fun isString(value | any) | bool {
+    return typeOf(value) == "string";
+}
+
+pub fun isInt(value | any) | bool {
+    return typeOf(value) == "int";
+}
+
+pub fun isBool(value | any) | bool {
+    return typeOf(value) == "bool";
+}

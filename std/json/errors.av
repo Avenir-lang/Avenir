@@ -1,0 +1,9 @@
+pckg std.json;
+
+pub fun typeError(expected | string, actual | string) | error {
+    return error("json: expected " + expected + ", got " + actual);
+}
+
+pub fun keyError(key | string) | error {
+    return error("json: missing key " + key);
+}

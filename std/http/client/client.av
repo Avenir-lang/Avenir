@@ -1,0 +1,50 @@
+pckg std.http.client;
+
+pub fun request(req | HttpRequest) | HttpResponse {
+    var raw | dict<any> = __builtin_http_request(req.method, req.url, req.headers, req.body);
+    return HttpResponse{
+        status = raw["status"],
+        headers = raw["headers"],
+        body = raw["body"]
+    };
+}
+
+pub fun get(url | string) | HttpResponse {
+    var req | HttpRequest = HttpRequest{
+        method = "GET",
+        url = url,
+        headers = {},
+        body = none
+    };
+    return request(req);
+}
+
+pub fun delete(url | string) | HttpResponse {
+    var req | HttpRequest = HttpRequest{
+        method = "DELETE",
+        url = url,
+        headers = {},
+        body = none
+    };
+    return request(req);
+}
+
+pub fun post(url | string, body | bytes) | HttpResponse {
+    var req | HttpRequest = HttpRequest{
+        method = "POST",
+        url = url,
+        headers = {},
+        body = some(body)
+    };
+    return request(req);
+}
+
+pub fun put(url | string, body | bytes) | HttpResponse {
+    var req | HttpRequest = HttpRequest{
+        method = "PUT",
+        url = url,
+        headers = {},
+        body = some(body)
+    };
+    return request(req);
+}

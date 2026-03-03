@@ -1,0 +1,50 @@
+pckg main;
+
+import std.net;
+
+fun main() | void {
+    try {
+        var sock | net.Socket = net.connect("127.0.0.1", 2031);
+        print("Connected to server");
+
+        while (true) {
+            // Read one line from the client user and send it to the server.
+            var msg | string = input();
+            if (msg == "/exit") {
+                sock.writeString("/exit");
+                break;
+            }
+            sock.writeString("${msg}\n");
+
+            // Read one line from the server (byte-by-byte until '\n').
+            var buf | bytes = fromString("");
+            var disconnected | bool = false;
+            while (true) {
+                var chunk | bytes = sock.read(1);
+                if (len(chunk) == 0) {
+                    disconnected = true;
+                    break;
+                }
+                buf = buf.concat(chunk);
+                if (chunk.toString() == "\n") {
+                    break;
+                }
+            }
+            if (disconnected) {
+                print("Server disconnected");
+                break;
+            }
+
+            var line | string = buf.toString().trimRight();
+            if (line == "/exit") {
+                print("Server requested exit");
+                break;
+            }
+            print("Server: ${line}");
+        }
+
+        sock.close();
+    } catch (e | error) {
+        print("Client error: ${errorMessage(e)}");
+    }
+}

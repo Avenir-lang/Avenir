@@ -1,0 +1,12 @@
+pckg main;
+
+import std.http.client as http;
+
+fun main() | void {
+    try {
+        var res | http.HttpResponse = http.get("https://example.com");
+        print(res.text());
+    } catch (e | error) {
+        print("HTTP error: " + errorMessage(e));
+    }
+}

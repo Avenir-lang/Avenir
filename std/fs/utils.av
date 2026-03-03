@@ -1,0 +1,18 @@
+pckg std.fs;
+
+// Internal helpers for std.fs.
+
+fun isAbsolute(path | string) | bool {
+    return path.startsWith("/");
+}
+
+fun resolvePath(path | string) | string {
+    if (isAbsolute(path)) {
+        return path;
+    }
+    var root | string = __builtin_fs_exec_root();
+    if (root == "") {
+        return path;
+    }
+    return join(root, path);
+}

@@ -1,0 +1,17 @@
+pckg main;
+
+import std.json;
+
+fun main() | void {
+    try {
+        var data | any = json.parse(
+            "{ \"name\": \"Alex\", \"age\": 30, \"tags\": [\"dev\", \"go\"] }"
+        );
+
+        var obj | dict<any> = json.asDict(data);
+        print(obj.name);
+        print(obj.age);
+    } catch (e | error) {
+        print("JSON error: " + errorMessage(e));
+    }
+}

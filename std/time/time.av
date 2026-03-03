@@ -1,0 +1,16 @@
+pckg std.time;
+
+// Satisfies file-to-struct mapping for time.av.
+struct time {}
+
+pub fun now() | DateTime {
+    var ts | int = __builtin_time_now();
+    return DateTime{timestamp = ts};
+}
+
+pub fun sleep(d | Duration) | void {
+    if (d.nanos < 0) {
+        throw timeError("duration must be non-negative");
+    }
+    __builtin_time_sleep(d.nanos);
+}

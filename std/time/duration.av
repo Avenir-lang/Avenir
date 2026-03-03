@@ -1,0 +1,60 @@
+pckg std.time;
+
+// Satisfies file-to-struct mapping for duration.av.
+struct duration {}
+
+pub struct Duration {
+    nanos | int
+}
+
+pub fun parseDuration(text | string) | Duration {
+    if (text == "") {
+        throw timeError("duration string is empty");
+    }
+    var n | int = __builtin_time_parse_duration(text);
+    return Duration{nanos = n};
+}
+
+pub fun fromNanos(n | int) | Duration {
+    return Duration{nanos = n};
+}
+
+pub fun fromMillis(ms | int) | Duration {
+    return Duration{nanos = ms * 1000000};
+}
+
+pub fun fromSeconds(sec | int) | Duration {
+    return Duration{nanos = sec * 1000000000};
+}
+
+pub fun fromMinutes(min | int) | Duration {
+    return Duration{nanos = min * 60 * 1000000000};
+}
+
+pub fun fromHours(hours | int) | Duration {
+    return Duration{nanos = hours * 3600 * 1000000000};
+}
+
+pub fun (d | Duration).hours() | float {
+    return d.nanos / 3600000000000.0;
+}
+
+pub fun (d | Duration).minutes() | float {
+    return d.nanos / 60000000000.0;
+}
+
+pub fun (d | Duration).seconds() | float {
+    return d.nanos / 1000000000.0;
+}
+
+pub fun (d | Duration).milliseconds() | float {
+    return d.nanos / 1000000.0;
+}
+
+pub fun (d | Duration).add(other | Duration) | Duration {
+    return Duration{nanos = d.nanos + other.nanos};
+}
+
+pub fun (d | Duration).sub(other | Duration) | Duration {
+    return Duration{nanos = d.nanos - other.nanos};
+}

@@ -1,0 +1,17 @@
+pckg main;
+
+import std.net;
+
+fun main() | void {
+    var srv | net.Server = net.listen("0.0.0.0", 5890);
+    print("The server is running!");
+
+    while (true) {
+        var client | net.Socket = srv.accept();
+        print("A new client has connected.");
+        var msg | string = "You have successfully connected to the server!";
+        client.writeString("${msg}\n");
+        client.close();
+        print("The client has disconnected.");
+    }
+}

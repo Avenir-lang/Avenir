@@ -1,0 +1,14 @@
+pckg std.net;
+
+// Satisfies file-to-struct mapping for std.net.
+struct net {}
+
+pub fun connect(host | string, port | int) | Socket {
+    var h | any = __builtin_socket_connect(host, port);
+    return Socket{handle = h};
+}
+
+pub fun listen(host | string, port | int) | Server {
+    var h | any = __builtin_socket_listen(host, port);
+    return Server{handle = h};
+}

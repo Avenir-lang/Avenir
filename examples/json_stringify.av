@@ -1,0 +1,14 @@
+pckg main;
+
+import std.json;
+
+fun main() | void {
+    var user | dict<any> = {
+        name: "Alex",
+        age: 30,
+        isAdmin: false
+    };
+
+    var text | string = json.stringify(user);
+    print(text);
+}

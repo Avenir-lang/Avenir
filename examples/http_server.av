@@ -1,0 +1,15 @@
+pckg main;
+
+import std.http.server as http;
+
+fun main() | void {
+    var server | http.HttpServer = http.listen("0.0.0.0", 8080);
+
+    server.serve(fun(req | http.HttpRequest) | http.HttpResponse {
+        if (req.path == "/") {
+            return http.text(200, "Hello, world!");
+        }
+
+        return http.text(404, "Not found");
+    });
+}

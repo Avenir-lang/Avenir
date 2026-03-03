@@ -1,0 +1,40 @@
+pckg std.fs;
+
+// Satisfies file-to-struct mapping for file.av.
+struct file {}
+
+pub struct File {
+    handle | any
+}
+
+pub fun (f | File).read(n | int) | bytes {
+    return __builtin_fs_read(f.handle, n);
+}
+
+pub fun (f | File).readAll() | bytes {
+    var buf | bytes = fromString("");
+    while (true) {
+        var chunk | bytes = f.read(1024);
+        if (len(chunk) == 0) {
+            break;
+        }
+        buf = buf.concat(chunk);
+    }
+    return buf;
+}
+
+pub fun (f | File).readString() | string {
+    return f.readAll().toString();
+}
+
+pub fun (f | File).write(data | bytes) | int {
+    return __builtin_fs_write(f.handle, data);
+}
+
+pub fun (f | File).writeString(data | string) | int {
+    return f.write(fromString(data));
+}
+
+pub fun (f | File).close() | void {
+    __builtin_fs_close(f.handle);
+}

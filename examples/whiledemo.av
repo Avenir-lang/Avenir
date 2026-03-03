@@ -1,0 +1,12 @@
+pckg main;
+
+pub struct Point {
+    pub x | int
+}
+
+fun main() | void {
+    var p | int = 10;
+    p = 5;
+    print(p);
+    return;
+}

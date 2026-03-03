@@ -1,0 +1,22 @@
+pckg std.time;
+
+fun requireFormat(fmt | string) | string {
+    if (fmt == "") {
+        throw timeError("format string is empty");
+    }
+    return fmt;
+}
+
+fun toGoLayout(fmt | string) | string {
+    var layout | string = requireFormat(fmt);
+    layout = layout.replace("YYYY", "2006");
+    layout = layout.replace("SSS", "000");
+    layout = layout.replace("YY", "06");
+    layout = layout.replace("MM", "01");
+    layout = layout.replace("DD", "02");
+    layout = layout.replace("HH", "15");
+    layout = layout.replace("mm", "04");
+    layout = layout.replace("ss", "05");
+    layout = layout.replace("Z", "Z07:00");
+    return layout;
+}
