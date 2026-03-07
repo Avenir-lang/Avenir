@@ -628,10 +628,16 @@ func (c *Checker) declareFunc(fn *ast.FunDecl) {
 		return // Methods are not inserted into global scope
 	}
 
+	// For async functions, wrap the return type in Future<T>
+	resultType := retType
+	if fn.IsAsync {
+		resultType = &Future{Inner: retType}
+	}
+
 	// Regular function: insert into global scope
 	fnType := &Func{
 		ParamTypes: params,
-		Result:     retType,
+		Result:     resultType,
 	}
 
 	if err := c.global.Insert(&Symbol{
@@ -710,7 +716,17 @@ func (c *Checker) checkFunc(fn *ast.FunDecl) {
 	defer func() { c.scope = prevScope }()
 
 	prevRet := c.currentReturn
-	c.currentReturn = fnType.Result
+	// For async functions, the declared result is Future<T> but return statements
+	// should check against T (the inner type), not Future<T>.
+	if fn.IsAsync {
+		if fut, ok := fnType.Result.(*Future); ok {
+			c.currentReturn = fut.Inner
+		} else {
+			c.currentReturn = fnType.Result
+		}
+	} else {
+		c.currentReturn = fnType.Result
+	}
 	defer func() { c.currentReturn = prevRet }()
 
 	// For instance methods, insert receiver into scope and track it for visibility checks
@@ -1518,8 +1534,10 @@ func (c *Checker) checkExpr(e ast.Expr) Type {
 	case *ast.MemberExpr:
 		resultType = c.checkMember(ex)
 
+	case *ast.AwaitExpr:
+		resultType = c.checkAwait(ex)
+
 	default:
-		// Future: support additional expression types
 		resultType = Invalid
 	}
 
@@ -2973,4 +2991,17 @@ func (c *Checker) methodSignaturesMatch(required InterfaceMethod, actual *Method
 	}
 
 	return true
+}
+
+func (c *Checker) checkAwait(a *ast.AwaitExpr) Type {
+	exprType := c.checkExpr(a.Expr)
+	if IsInvalid(exprType) {
+		return Invalid
+	}
+	fut, ok := exprType.(*Future)
+	if !ok {
+		c.addError(a.Pos(), "await expects Future<T>, got %s", exprType.String())
+		return Invalid
+	}
+	return fut.Inner
 }

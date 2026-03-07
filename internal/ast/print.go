@@ -60,6 +60,10 @@ func fprintNode(w io.Writer, n Node, indent int) {
 			}
 			typeParamStr = fmt.Sprintf("<%s>", strings.Join(names, ", "))
 		}
+		asyncStr := ""
+		if n.IsAsync {
+			asyncStr = " async"
+		}
 		methodStr := ""
 		if n.Receiver != nil {
 			typeName := "unknown"
@@ -72,7 +76,7 @@ func fprintNode(w io.Writer, n Node, indent int) {
 				methodStr = fmt.Sprintf(" instance method on %s (receiver: %s)", typeName, n.Receiver.Name)
 			}
 		}
-		fmt.Fprintf(w, "%sFunDecl name=%s%s%s%s\n", ind, n.Name, typeParamStr, pubStr, methodStr)
+		fmt.Fprintf(w, "%sFunDecl name=%s%s%s%s%s\n", ind, n.Name, typeParamStr, pubStr, asyncStr, methodStr)
 		if n.Receiver != nil {
 			fmt.Fprintf(w, "%s  Receiver:\n", ind)
 			if n.Receiver.Kind == ReceiverStatic {
@@ -362,6 +366,10 @@ func fprintNode(w io.Writer, n Node, indent int) {
 		fprintNode(w, n.Return, indent+2)
 		fmt.Fprintf(w, "%s  Body:\n", ind)
 		fprintNode(w, n.Body, indent+2)
+
+	case *AwaitExpr:
+		fmt.Fprintf(w, "%sAwaitExpr\n", ind)
+		fprintNode(w, n.Expr, indent+1)
 
 	default:
 		fmt.Fprintf(w, "%s<unknown node %T>\n", ind, n)

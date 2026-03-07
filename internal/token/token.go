@@ -41,6 +41,8 @@ const (
 	Pub       // pub
 	Mut       // mut
 	Interface // interface
+	Async     // async
+	Await     // await
 
 	// Type keywords
 	IntType    // int
@@ -169,6 +171,10 @@ func (k Kind) String() string {
 		return "Mut"
 	case Interface:
 		return "Interface"
+	case Async:
+		return "Async"
+	case Await:
+		return "Await"
 	case IntType:
 		return "IntType"
 	case FloatType:
@@ -271,6 +277,8 @@ var keywords = map[string]Kind{
 	"pub":       Pub,
 	"mut":       Mut,
 	"interface": Interface,
+	"async":     Async,
+	"await":     Await,
 
 	"int":    IntType,
 	"float":  FloatType,

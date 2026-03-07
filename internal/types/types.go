@@ -239,6 +239,23 @@ func (o *Optional) equal(other Type) bool {
 	return o.Inner.equal(otherOpt.Inner)
 }
 
+// Future represents an asynchronous value: Future<T>
+type Future struct {
+	Inner Type
+}
+
+func (f *Future) String() string {
+	return "Future<" + f.Inner.String() + ">"
+}
+
+func (f *Future) equal(other Type) bool {
+	otherFut, ok := other.(*Future)
+	if !ok {
+		return false
+	}
+	return f.Inner.equal(otherFut.Inner)
+}
+
 // Struct represents a struct type with named fields.
 // Structs use nominal typing: two structs are equal only if they have the same name.
 type Struct struct {

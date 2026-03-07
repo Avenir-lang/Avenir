@@ -76,6 +76,7 @@ type FunDecl struct {
 	Return     TypeNode
 	Body       *BlockStmt
 	IsPublic   bool // true if declared with "pub fun"
+	IsAsync    bool // true if declared with "async fun"
 }
 
 // ReceiverKind distinguishes between instance and static methods.
@@ -553,3 +554,11 @@ type NamedArg struct {
 
 func (a *NamedArg) Pos() token.Position { return a.NamePos }
 func (a *NamedArg) exprNode()           {}
+
+type AwaitExpr struct {
+	AwaitPos token.Position
+	Expr     Expr
+}
+
+func (e *AwaitExpr) Pos() token.Position { return e.AwaitPos }
+func (e *AwaitExpr) exprNode()           {}

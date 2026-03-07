@@ -77,7 +77,7 @@ func (p *Parser) ParseProgram() *ast.Program {
 
 	// functions (zero or more)
 	for p.cur.Kind != token.EOF {
-		if p.cur.Kind == token.Fun || p.cur.Kind == token.Pub {
+		if p.cur.Kind == token.Fun || p.cur.Kind == token.Pub || p.cur.Kind == token.Async {
 			if p.cur.Kind == token.Pub && (p.peek.Kind == token.Struct || p.peek.Kind == token.Mut || p.peek.Kind == token.Interface) {
 				// pub struct, pub mut struct, or pub interface declaration
 				isPublic := true
@@ -429,9 +429,16 @@ func (p *Parser) parseFunDecl() *ast.FunDecl {
 		p.nextToken()
 	}
 
-	// Must have 'fun' after 'pub' (or just 'fun' if no 'pub')
+	// Optional 'async' keyword
+	isAsync := false
+	if p.cur.Kind == token.Async {
+		isAsync = true
+		p.nextToken()
+	}
+
+	// Must have 'fun' after 'pub'/'async' (or just 'fun')
 	if p.cur.Kind != token.Fun {
-		p.errorf(p.cur.Pos, "expected 'fun' after 'pub'")
+		p.errorf(p.cur.Pos, "expected 'fun'")
 		return nil
 	}
 	funTok := p.cur
@@ -583,6 +590,7 @@ func (p *Parser) parseFunDecl() *ast.FunDecl {
 		Return:     retType,
 		Body:       body,
 		IsPublic:   isPublic,
+		IsAsync:    isAsync,
 	}
 }
 
@@ -1456,6 +1464,15 @@ func (p *Parser) parseUnary() ast.Expr {
 			OpPos: opTok.Pos,
 			Op:    opTok.Kind,
 			X:     x,
+		}
+	}
+	if p.cur.Kind == token.Await {
+		awaitTok := p.cur
+		p.nextToken()
+		expr := p.parseUnary()
+		return &ast.AwaitExpr{
+			AwaitPos: awaitTok.Pos,
+			Expr:     expr,
 		}
 	}
 	return p.parsePostfix()

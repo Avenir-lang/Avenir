@@ -1989,6 +1989,148 @@ fun main() | void {
 	}
 }
 
+func TestCheckProgram_AsyncFunctionValid(t *testing.T) {
+	input := `
+pckg main;
+
+async fun fetch() | int {
+    return 10;
+}
+
+async fun main() | int {
+    var x | int = await fetch();
+    return x;
+}
+`
+	l := lexer.New(input)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("parser error: %s", e)
+		}
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	errs := types.CheckProgram(prog)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("type error: %s", e)
+		}
+		t.Fatalf("expected no type errors, got %d", len(errs))
+	}
+}
+
+func TestCheckProgram_AwaitNonFutureError(t *testing.T) {
+	input := `
+pckg main;
+
+fun main() | void {
+    var x | int = await 10;
+}
+`
+	l := lexer.New(input)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		t.Fatalf("unexpected parser errors: %v", errs)
+	}
+
+	errs := types.CheckProgram(prog)
+	if len(errs) == 0 {
+		t.Fatalf("expected type error for await on non-Future type, got none")
+	}
+
+	found := false
+	for _, e := range errs {
+		if strings.Contains(e.Error(), "await expects Future<T>") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected 'await expects Future<T>' error, got: %v", errs)
+	}
+}
+
+func TestCheckProgram_AsyncFunctionReturnTypeMismatch(t *testing.T) {
+	input := `
+pckg main;
+
+async fun fetch() | int {
+    return "not an int";
+}
+`
+	l := lexer.New(input)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		t.Fatalf("unexpected parser errors: %v", errs)
+	}
+
+	errs := types.CheckProgram(prog)
+	if len(errs) == 0 {
+		t.Fatalf("expected type error for return type mismatch in async function, got none")
+	}
+}
+
+func TestCheckProgram_AwaitUnwrapsFutureCorrectly(t *testing.T) {
+	input := `
+pckg main;
+
+async fun fetchName() | string {
+    return "Alice";
+}
+
+async fun main() | string {
+    var name | string = await fetchName();
+    return name;
+}
+`
+	l := lexer.New(input)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("parser error: %s", e)
+		}
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	errs := types.CheckProgram(prog)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("type error: %s", e)
+		}
+		t.Fatalf("expected no type errors, got %d", len(errs))
+	}
+}
+
+func TestCheckProgram_AwaitTypeMismatchAssignment(t *testing.T) {
+	input := `
+pckg main;
+
+async fun fetch() | int {
+    return 10;
+}
+
+async fun main() | void {
+    var x | string = await fetch();
+}
+`
+	l := lexer.New(input)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		t.Fatalf("unexpected parser errors: %v", errs)
+	}
+
+	errs := types.CheckProgram(prog)
+	if len(errs) == 0 {
+		t.Fatalf("expected type error for assigning int to string via await, got none")
+	}
+}
+
 func TestCheckInterface_MultipleMethods(t *testing.T) {
 	input := `
 pckg main;

@@ -706,3 +706,137 @@ fun main() | void {
 		t.Fatalf("expected second field 'y', got %q", structLit.Fields[1].Name)
 	}
 }
+
+func TestParseAsyncFunction(t *testing.T) {
+	input := `pckg main;
+
+async fun fetch() | int {
+    return 10;
+}
+`
+	l := lexer.New(input)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("parser error: %s", e)
+		}
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	if len(prog.Funcs) != 1 {
+		t.Fatalf("expected 1 function, got %d", len(prog.Funcs))
+	}
+
+	fn := prog.Funcs[0]
+	if fn.Name != "fetch" {
+		t.Fatalf("expected function name 'fetch', got %q", fn.Name)
+	}
+	if !fn.IsAsync {
+		t.Fatalf("expected function to be async")
+	}
+}
+
+func TestParseAsyncFunctionNotAsync(t *testing.T) {
+	input := `pckg main;
+
+fun fetch() | int {
+    return 10;
+}
+`
+	l := lexer.New(input)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	if !prog.Funcs[0].IsAsync == false {
+		t.Fatalf("expected function to NOT be async")
+	}
+}
+
+func TestParsePubAsyncFunction(t *testing.T) {
+	input := `pckg main;
+
+pub async fun fetch() | int {
+    return 10;
+}
+`
+	l := lexer.New(input)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("parser error: %s", e)
+		}
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	if len(prog.Funcs) != 1 {
+		t.Fatalf("expected 1 function, got %d", len(prog.Funcs))
+	}
+
+	fn := prog.Funcs[0]
+	if !fn.IsPublic {
+		t.Fatalf("expected function to be public")
+	}
+	if !fn.IsAsync {
+		t.Fatalf("expected function to be async")
+	}
+}
+
+func TestParseAwaitExpression(t *testing.T) {
+	input := `pckg main;
+
+async fun fetch() | int {
+    return 10;
+}
+
+async fun main() | int {
+    var x | int = await fetch();
+    return x;
+}
+`
+	l := lexer.New(input)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("parser error: %s", e)
+		}
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	if len(prog.Funcs) != 2 {
+		t.Fatalf("expected 2 functions, got %d", len(prog.Funcs))
+	}
+
+	mainFn := prog.Funcs[1]
+	if mainFn.Name != "main" {
+		t.Fatalf("expected function name 'main', got %q", mainFn.Name)
+	}
+
+	varDecl, ok := mainFn.Body.Stmts[0].(*ast.VarDeclStmt)
+	if !ok {
+		t.Fatalf("expected VarDeclStmt, got %T", mainFn.Body.Stmts[0])
+	}
+
+	awaitExpr, ok := varDecl.Value.(*ast.AwaitExpr)
+	if !ok {
+		t.Fatalf("expected AwaitExpr, got %T", varDecl.Value)
+	}
+
+	callExpr, ok := awaitExpr.Expr.(*ast.CallExpr)
+	if !ok {
+		t.Fatalf("expected CallExpr inside await, got %T", awaitExpr.Expr)
+	}
+
+	ident, ok := callExpr.Callee.(*ast.IdentExpr)
+	if !ok {
+		t.Fatalf("expected IdentExpr as callee, got %T", callExpr.Callee)
+	}
+	if ident.Name != "fetch" {
+		t.Fatalf("expected callee 'fetch', got %q", ident.Name)
+	}
+}
