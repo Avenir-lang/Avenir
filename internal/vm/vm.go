@@ -25,6 +25,25 @@ type exceptionHandler struct {
 	StackSP    int // stack height to restore before jump
 }
 
+// taskContext stores saved VM state for a suspended async task.
+type taskContext struct {
+	stack    []value.Value
+	sp       int
+	frames   []Frame
+	handlers []exceptionHandler
+	future   *runtime.Future
+	task     *runtime.Task
+}
+
+var errSuspended = fmt.Errorf("task suspended")
+
+// compactStack shrinks the stack to the active portion to reduce memory for suspended tasks.
+func compactStack(stack []value.Value, sp int) []value.Value {
+	newStack := make([]value.Value, sp)
+	copy(newStack, stack[:sp])
+	return newStack
+}
+
 // VM is a stack-based virtual machine for Avenir.
 type VM struct {
 	mod    *ir.Module
@@ -34,6 +53,10 @@ type VM struct {
 
 	env      *runtime.Env
 	handlers []exceptionHandler
+
+	scheduler   *runtime.Scheduler
+	currentTask *taskContext
+	suspended   bool
 }
 
 func (vm *VM) throwValue(exc value.Value) bool {
@@ -141,8 +164,52 @@ func (vm *VM) RunMain() (value.Value, error) {
 		return value.Value{}, fmt.Errorf("invalid main index %d", vm.mod.MainIndex)
 	}
 	fn := vm.mod.Functions[vm.mod.MainIndex]
+
+	if fn.IsAsync {
+		return vm.runAsyncMain(fn)
+	}
+
 	cloVal := value.NewClosure(fn, nil)
 	return vm.callClosure(cloVal.Closure, 0)
+}
+
+// runAsyncMain runs an async main function using the scheduler and event loop.
+func (vm *VM) runAsyncMain(fn *ir.Function) (value.Value, error) {
+	sched := runtime.NewScheduler()
+	vm.scheduler = sched
+
+	mainFut := runtime.NewFuture()
+	cloVal := value.NewClosure(fn, nil)
+
+	task := sched.NewTask(mainFut, func() (status runtime.TaskStatus, retErr error) {
+		defer func() {
+			if r := recover(); r != nil {
+				retErr = fmt.Errorf("panic in async task: %v", r)
+				status = runtime.TaskFailed
+			}
+		}()
+
+		result, err := vm.callClosure(cloVal.Closure, 0)
+		if err != nil {
+			if errors.Is(err, errSuspended) {
+				return runtime.TaskSuspended, nil
+			}
+			return runtime.TaskFailed, err
+		}
+		mainFut.Resolve(result)
+		return runtime.TaskDone, nil
+	})
+
+	sched.Schedule(task)
+
+	if err := runtime.RunEventLoop(sched); err != nil {
+		return value.Value{}, err
+	}
+
+	if mainFut.Err != nil {
+		return value.Value{}, mainFut.Err
+	}
+	return mainFut.Result, nil
 }
 
 // callClosure calls a closure with the given number of arguments.
@@ -197,6 +264,9 @@ func (vm *VM) callClosure(clo *value.Closure, numArgs int) (value.Value, error) 
 	var lastRet value.Value
 	var skipIncrement bool
 	for {
+		if vm.suspended {
+			return value.Value{}, errSuspended
+		}
 		if len(vm.frames) == 0 {
 			return lastRet, nil
 		}
@@ -1086,6 +1156,85 @@ func (vm *VM) callClosure(clo *value.Closure, numArgs int) (value.Value, error) 
 				continue
 			}
 			return value.Value{}, fmt.Errorf("unhandled error: %s", errorMessage(exc))
+
+		case ir.OpSpawn:
+			fnIdx := inst.A
+			numArgs := inst.B
+
+			if fnIdx < 0 || fnIdx >= len(vm.mod.Functions) {
+				err := fmt.Errorf("OpSpawn: invalid function index %d", fnIdx)
+				if vm.raiseError(err) {
+					skipIncrement = true
+					continue
+				}
+				return value.Value{}, err
+			}
+
+			fn := vm.mod.Functions[fnIdx]
+			clo := value.NewClosure(fn, nil)
+
+			result, err := vm.callClosure(clo.Closure, numArgs)
+
+			fut := runtime.NewFuture()
+			if err != nil {
+				fut.Reject(err)
+			} else {
+				fut.Resolve(result)
+			}
+
+			vm.push(value.FutureVal(fut))
+
+		case ir.OpAwait:
+			val, err := vm.pop()
+			if err != nil {
+				if vm.raiseError(err) {
+					skipIncrement = true
+					continue
+				}
+				return value.Value{}, err
+			}
+			if val.Kind != value.KindFuture {
+				err := fmt.Errorf("OpAwait: expected future, got %v", val.Kind)
+				if vm.raiseError(err) {
+					skipIncrement = true
+					continue
+				}
+				return value.Value{}, err
+			}
+			fut, ok := val.Future.(*runtime.Future)
+			if !ok || fut == nil {
+				err := fmt.Errorf("OpAwait: invalid future value")
+				if vm.raiseError(err) {
+					skipIncrement = true
+					continue
+				}
+				return value.Value{}, err
+			}
+			if !fut.Ready {
+				if vm.currentTask != nil {
+					fut.AddWaiter(vm.currentTask.task)
+					vm.currentTask.stack = compactStack(vm.stack, vm.sp)
+					vm.currentTask.sp = vm.sp
+					vm.currentTask.frames = vm.frames
+					vm.currentTask.handlers = vm.handlers
+					vm.suspended = true
+					return value.Value{}, errSuspended
+				}
+				err := fmt.Errorf("OpAwait: future not ready in non-async context")
+				if vm.raiseError(err) {
+					skipIncrement = true
+					continue
+				}
+				return value.Value{}, err
+			}
+			if fut.Err != nil {
+				if vm.throwValue(value.ErrorValue(fut.Err.Error())) {
+					skipIncrement = true
+					continue
+				}
+				return value.Value{}, fut.Err
+			}
+			vm.push(fut.Result)
 
 		default:
 			if vm.raiseError(fmt.Errorf("unknown opcode %d", inst.Op)) {

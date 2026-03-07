@@ -4360,3 +4360,128 @@ fun main() | string {
 		t.Fatalf("expected \"HELLO\", got %v (%s)", val.Str, val.String())
 	}
 }
+
+func TestCompile_AsyncAwait_BasicSum(t *testing.T) {
+	src := `
+pckg main;
+
+async fun A() | int { return 10; }
+async fun B() | int { return 20; }
+
+async fun main() | int {
+    var a | int = await A();
+    var b | int = await B();
+    return a + b;
+}
+`
+	l := lexer.New(src)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("parser error: %s", e)
+		}
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	mod, errs := ir.Compile(prog)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("compile error: %s", e)
+		}
+		t.Fatalf("expected no compile errors, got %d", len(errs))
+	}
+
+	machine := vm.NewVM(mod, runtime.DefaultEnv())
+	val, err := machine.RunMain()
+	if err != nil {
+		t.Fatalf("RunMain error: %v", err)
+	}
+
+	if val.Kind != value.KindInt || val.Int != 30 {
+		t.Fatalf("expected 30, got %v (%s)", val.Int, val.String())
+	}
+}
+
+func TestCompile_AsyncAwait_VoidPrint(t *testing.T) {
+	src := `
+pckg main;
+
+async fun greet() | void {
+    print("hello");
+}
+
+async fun main() | void {
+    await greet();
+}
+`
+	l := lexer.New(src)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("parser error: %s", e)
+		}
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	mod, errs := ir.Compile(prog)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("compile error: %s", e)
+		}
+		t.Fatalf("expected no compile errors, got %d", len(errs))
+	}
+
+	var output []string
+	env := runtime.NewEnv(&testOutputWriter{output: &output})
+	machine := vm.NewVM(mod, env)
+	_, err := machine.RunMain()
+	if err != nil {
+		t.Fatalf("RunMain error: %v", err)
+	}
+
+	if len(output) != 1 || output[0] != "hello" {
+		t.Fatalf("expected [\"hello\"], got %v", output)
+	}
+}
+
+func TestCompile_AsyncAwait_DoubleAwaitSameFuture(t *testing.T) {
+	src := `
+pckg main;
+
+async fun A() | int { return 10; }
+
+async fun main() | int {
+    var f | int = await A();
+    return f + f;
+}
+`
+	l := lexer.New(src)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("parser error: %s", e)
+		}
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	mod, errs := ir.Compile(prog)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("compile error: %s", e)
+		}
+		t.Fatalf("expected no compile errors, got %d", len(errs))
+	}
+
+	machine := vm.NewVM(mod, runtime.DefaultEnv())
+	val, err := machine.RunMain()
+	if err != nil {
+		t.Fatalf("RunMain error: %v", err)
+	}
+
+	if val.Kind != value.KindInt || val.Int != 20 {
+		t.Fatalf("expected 20, got %v (%s)", val.Int, val.String())
+	}
+}

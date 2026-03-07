@@ -23,6 +23,7 @@ const (
 	KindOptional
 	KindStruct
 	KindDict
+	KindFuture
 )
 
 // Upvalue represents a captured variable.
@@ -72,6 +73,7 @@ type Value struct {
 	Optional *OptionalValue // for KindOptional
 	Struct   *StructValue   // for KindStruct
 	Error    *ErrorInfo
+	Future   interface{}
 }
 
 func (v Value) String() string {
@@ -130,6 +132,8 @@ func (v Value) String() string {
 		}
 		b.WriteString("}")
 		return b.String()
+	case KindFuture:
+		return "<future>"
 	case KindDict:
 		var b strings.Builder
 		b.WriteString("{")
@@ -224,4 +228,9 @@ func Dict(entries map[string]Value) Value {
 		Kind: KindDict,
 		Dict: entries,
 	}
+}
+
+// FutureVal creates a future value wrapping a *runtime.Future (stored as interface{} to avoid circular import).
+func FutureVal(f interface{}) Value {
+	return Value{Kind: KindFuture, Future: f}
 }

@@ -131,6 +131,7 @@ func CompileWorld(world *types.World, entryMod *types.ModuleInfo, bindings *type
 				NumParams: numParams,
 				Chunk:     Chunk{},
 				Upvalues:  upvalues,
+				IsAsync:   fn.IsAsync,
 			}
 			mod.Functions = append(mod.Functions, irFn)
 			funcIndexByDecl[fn] = idx
@@ -148,6 +149,7 @@ func CompileWorld(world *types.World, entryMod *types.ModuleInfo, bindings *type
 			Name:      monoName,
 			NumParams: len(monoDecl.Params),
 			Chunk:     Chunk{},
+			IsAsync:   monoDecl.IsAsync,
 		}
 		mod.Functions = append(mod.Functions, irFn)
 		funcIndexByDecl[monoDecl] = idx
@@ -411,6 +413,8 @@ func collectFuncLiteralsInNode(node ast.Node, modName string, mod *Module, funcI
 		}
 	case *ast.MemberExpr:
 		collectFuncLiteralsInNode(n.X, modName, mod, funcIndexByLiteral, allFuncNodes, allFuncInfos)
+	case *ast.AwaitExpr:
+		collectFuncLiteralsInNode(n.Expr, modName, mod, funcIndexByLiteral, allFuncNodes, allFuncInfos)
 	}
 }
 
@@ -511,6 +515,10 @@ func findFuncLiteralInNode(node ast.Node, target *ast.FuncLiteral) bool {
 		}
 	case *ast.MemberExpr:
 		if findFuncLiteralInNode(n.X, target) {
+			return true
+		}
+	case *ast.AwaitExpr:
+		if findFuncLiteralInNode(n.Expr, target) {
 			return true
 		}
 	}
@@ -1370,6 +1378,10 @@ func (fc *funcCompiler) compileExpr(e ast.Expr) {
 		}
 		fc.addError(ex, "cannot resolve member %q", ex.Name)
 
+	case *ast.AwaitExpr:
+		fc.compileExpr(ex.Expr)
+		fc.chunk.Emit(OpAwait, 0, 0)
+
 	default:
 		fc.addError(e, "unsupported expression of type %T", e)
 	}
@@ -1967,7 +1979,11 @@ func (fc *funcCompiler) compileCall(call *ast.CallExpr) {
 		}
 
 		// Direct call by index with the number of parameters (including receiver for methods)
-		fc.chunk.Emit(OpCall, fnIndex, nParams)
+		if fnDecl.IsAsync {
+			fc.chunk.Emit(OpSpawn, fnIndex, nParams)
+		} else {
+			fc.chunk.Emit(OpCall, fnIndex, nParams)
+		}
 		return
 	}
 

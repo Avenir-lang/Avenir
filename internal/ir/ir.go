@@ -57,6 +57,10 @@ const (
 	OpClosure      // A = function index, B = number of upvalues
 	OpLoadUpvalue  // A = upvalue index
 	OpStoreUpvalue // A = upvalue index
+
+	// Async
+	OpSpawn // A = function index, B = number of arguments; create task + future, schedule, push future
+	OpAwait // pop future; if ready push result; else suspend current task
 )
 
 // Instruction is one bytecode instruction
@@ -107,6 +111,7 @@ type Function struct {
 	NumParams int
 	Chunk     Chunk
 	Upvalues  []UpvalueInfo // NEW: upvalues for closures
+	IsAsync   bool
 }
 
 // Module represents a compiled Avenir program.
