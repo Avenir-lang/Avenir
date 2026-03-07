@@ -18,7 +18,22 @@ Avenir is under active development. Some features may not be fully implemented o
 
 ### Does Avenir support generics?
 
-Not currently. Generic types are not yet supported.
+Yes. Avenir supports explicit generics for user-defined structs and functions.
+
+```avenir
+struct Box<T> {
+    value | T
+}
+
+fun identity<T>(x | T) | T {
+    return x;
+}
+
+var b | Box<int> = Box<int>{value = 1};
+var v | int = identity<int>(10);
+```
+
+Type arguments are currently explicit at call and type-usage sites.
 
 ### Does Avenir support inheritance?
 

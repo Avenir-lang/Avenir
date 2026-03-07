@@ -67,6 +67,17 @@ See `internal/ir/ir.go` for the full opcode list.
 
 ## Lowering Highlights
 
+### Generic Functions and Structs
+
+Generics are monomorphized before or during IR collection:
+
+- Uninstantiated generic declarations are skipped.
+- The compiler consumes monomorphized entries from type-checker bindings.
+- Each concrete instantiation gets its own function/type name
+  (for example, `identity$int`, `Box$int`).
+
+Only concrete instantiations referenced by the program are emitted.
+
 ### List and Dict Literals
 
 List and dict literals compile to `OpMakeList` and `OpMakeDict` with their
@@ -75,6 +86,9 @@ elements pushed first.
 ### Struct Literals
 
 Struct literals compile to `OpMakeStruct` with fields pushed in declared order.
+
+For generic struct literals, the compiler resolves the monomorphized struct name
+and emits `OpMakeStruct` for that concrete struct type index.
 
 ### Interpolated Strings
 

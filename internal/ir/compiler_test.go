@@ -4067,6 +4067,261 @@ fun main() | int {
 	}
 }
 
+func TestCompile_GenericFunction_Identity(t *testing.T) {
+	src := `
+pckg main;
+
+fun identity<T>(x | T) | T {
+    return x;
+}
+
+fun main() | int {
+    return identity<int>(42);
+}
+`
+	l := lexer.New(src)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("parser error: %s", e)
+		}
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	mod, errs := ir.Compile(prog)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("compile error: %s", e)
+		}
+		t.Fatalf("expected no compile errors, got %d", len(errs))
+	}
+
+	machine := vm.NewVM(mod, runtime.DefaultEnv())
+	val, err := machine.RunMain()
+	if err != nil {
+		t.Fatalf("RunMain error: %v", err)
+	}
+
+	if val.Kind != value.KindInt || val.Int != 42 {
+		t.Fatalf("expected 42, got %v (%s)", val.Int, val.String())
+	}
+}
+
+func TestCompile_GenericFunction_StringIdentity(t *testing.T) {
+	src := `
+pckg main;
+
+fun identity<T>(x | T) | T {
+    return x;
+}
+
+fun main() | string {
+    return identity<string>("hello");
+}
+`
+	l := lexer.New(src)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("parser error: %s", e)
+		}
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	mod, errs := ir.Compile(prog)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("compile error: %s", e)
+		}
+		t.Fatalf("expected no compile errors, got %d", len(errs))
+	}
+
+	machine := vm.NewVM(mod, runtime.DefaultEnv())
+	val, err := machine.RunMain()
+	if err != nil {
+		t.Fatalf("RunMain error: %v", err)
+	}
+
+	if val.Kind != value.KindString || val.Str != "hello" {
+		t.Fatalf("expected \"hello\", got %v (%s)", val.Str, val.String())
+	}
+}
+
+func TestCompile_GenericStruct(t *testing.T) {
+	src := `
+pckg main;
+
+struct Box<T> {
+    value | T
+}
+
+fun main() | int {
+    var b | Box<int> = Box<int>{value = 99};
+    return b.value;
+}
+`
+	l := lexer.New(src)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("parser error: %s", e)
+		}
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	mod, errs := ir.Compile(prog)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("compile error: %s", e)
+		}
+		t.Fatalf("expected no compile errors, got %d", len(errs))
+	}
+
+	machine := vm.NewVM(mod, runtime.DefaultEnv())
+	val, err := machine.RunMain()
+	if err != nil {
+		t.Fatalf("RunMain error: %v", err)
+	}
+
+	if val.Kind != value.KindInt || val.Int != 99 {
+		t.Fatalf("expected 99, got %v (%s)", val.Int, val.String())
+	}
+}
+
+func TestCompile_GenericFunction_TwoTypeParams(t *testing.T) {
+	src := `
+pckg main;
+
+fun pickFirst<T, U>(a | T, b | U) | T {
+    return a;
+}
+
+fun main() | int {
+    return pickFirst<int, string>(7, "x");
+}
+`
+	l := lexer.New(src)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("parser error: %s", e)
+		}
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	mod, errs := ir.Compile(prog)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("compile error: %s", e)
+		}
+		t.Fatalf("expected no compile errors, got %d", len(errs))
+	}
+
+	machine := vm.NewVM(mod, runtime.DefaultEnv())
+	val, err := machine.RunMain()
+	if err != nil {
+		t.Fatalf("RunMain error: %v", err)
+	}
+
+	if val.Kind != value.KindInt || val.Int != 7 {
+		t.Fatalf("expected 7, got %v (%s)", val.Int, val.String())
+	}
+}
+
+func TestCompile_GenericFunction_WithGenericStructParam(t *testing.T) {
+	src := `
+pckg main;
+
+struct Box<T> {
+    value | T
+}
+
+fun getValue<T>(b | Box<T>) | T {
+    return b.value;
+}
+
+fun main() | int {
+    return getValue<int>(Box<int>{value = 123});
+}
+`
+	l := lexer.New(src)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("parser error: %s", e)
+		}
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	mod, errs := ir.Compile(prog)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("compile error: %s", e)
+		}
+		t.Fatalf("expected no compile errors, got %d", len(errs))
+	}
+
+	machine := vm.NewVM(mod, runtime.DefaultEnv())
+	val, err := machine.RunMain()
+	if err != nil {
+		t.Fatalf("RunMain error: %v", err)
+	}
+
+	if val.Kind != value.KindInt || val.Int != 123 {
+		t.Fatalf("expected 123, got %v (%s)", val.Int, val.String())
+	}
+}
+
+func TestCompile_GenericFunction_MultipleInstantiations(t *testing.T) {
+	src := `
+pckg main;
+
+fun identity<T>(x | T) | T {
+    return x;
+}
+
+fun main() | int {
+    var ok | bool = identity<bool>(true);
+    if (ok) {
+        return identity<int>(11);
+    }
+    return 0;
+}
+`
+	l := lexer.New(src)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("parser error: %s", e)
+		}
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	mod, errs := ir.Compile(prog)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("compile error: %s", e)
+		}
+		t.Fatalf("expected no compile errors, got %d", len(errs))
+	}
+
+	machine := vm.NewVM(mod, runtime.DefaultEnv())
+	val, err := machine.RunMain()
+	if err != nil {
+		t.Fatalf("RunMain error: %v", err)
+	}
+
+	if val.Kind != value.KindInt || val.Int != 11 {
+		t.Fatalf("expected 11, got %v (%s)", val.Int, val.String())
+	}
+}
+
 func TestCompile_BuiltinMethod_Chained(t *testing.T) {
 	src := `
 pckg main;

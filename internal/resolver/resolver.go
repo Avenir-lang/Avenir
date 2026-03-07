@@ -20,9 +20,9 @@ type FunctionInfo struct {
 
 // Resolver analyzes the AST to identify captured variables (upvalues).
 type Resolver struct {
-	funcInfos    map[ast.Node]*FunctionInfo
-	funcParents  map[ast.Node]ast.Node // function -> parent function (for walking up the chain)
-	errors       []error
+	funcInfos   map[ast.Node]*FunctionInfo
+	funcParents map[ast.Node]ast.Node // function -> parent function (for walking up the chain)
+	errors      []error
 }
 
 // NewResolver creates a new resolver.
@@ -41,6 +41,13 @@ func (r *Resolver) Resolve(prog *ast.Program) map[ast.Node]*FunctionInfo {
 	// Second pass: identify upvalues for each function
 	r.identifyUpvalues(prog)
 
+	return r.funcInfos
+}
+
+// ResolveFunc resolves a single function declaration and returns its metadata.
+func (r *Resolver) ResolveFunc(fn *ast.FunDecl) map[ast.Node]*FunctionInfo {
+	r.collectFunction(fn, nil)
+	r.identifyUpvaluesForFunction(fn, nil, nil)
 	return r.funcInfos
 }
 
@@ -253,12 +260,12 @@ func (r *Resolver) identifyUpvalues(prog *ast.Program) {
 // identifyUpvaluesForFunction identifies upvalues for a function.
 //
 // Algorithm:
-//   1. Collect all identifiers used in the function body.
-//   2. For each identifier:
-//      - If it's a local (parameter or declared variable), skip it.
-//      - If it's in the parent function's locals, add as upvalue with IsLocal=true.
-//      - If it's in the parent function's upvalues, add as upvalue with IsLocal=false.
-//   3. Recursively process nested functions (so they can identify their upvalues).
+//  1. Collect all identifiers used in the function body.
+//  2. For each identifier:
+//     - If it's a local (parameter or declared variable), skip it.
+//     - If it's in the parent function's locals, add as upvalue with IsLocal=true.
+//     - If it's in the parent function's upvalues, add as upvalue with IsLocal=false.
+//  3. Recursively process nested functions (so they can identify their upvalues).
 //
 // Parameters:
 //   - fn: The function node to analyze

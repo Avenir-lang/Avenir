@@ -18,6 +18,9 @@ After the package declaration, a program can contain:
 2. **Struct declarations** (optional, zero or more)
 3. **Function declarations** (at least one, including `main`)
 
+Structs and functions may declare generic type parameters using angle brackets
+after the name (for example, `struct Box<T> { ... }`, `fun id<T>(x | T) | T { ... }`).
+
 ## Keywords
 
 The following keywords are reserved:
@@ -170,6 +173,7 @@ b"bytes data"
 ```avenir
 Point{x = 10, y = 20}
 Config{host = "localhost", port = 8080}
+Box<int>{value = 10}
 ```
 
 ## Expression Precedence

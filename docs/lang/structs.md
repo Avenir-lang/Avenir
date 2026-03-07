@@ -13,6 +13,28 @@ struct Point {
 }
 ```
 
+### Generic Structs
+
+Structs can declare type parameters after the struct name:
+
+```avenir
+struct Box<T> {
+    value | T
+}
+
+struct Pair<T, U> {
+    first | T
+    second | U
+}
+```
+
+Type arguments are explicit at usage sites:
+
+```avenir
+var n | Box<int> = Box<int>{value = 42};
+var p | Pair<int, string> = Pair<int, string>{first = 1, second = "one"};
+```
+
 ## Public Structs
 
 Structs can be marked as public using the `pub` keyword:
@@ -135,6 +157,12 @@ Struct literals create struct values:
 
 ```avenir
 var p | Point = Point{x = 10, y = 20};
+```
+
+Generic struct literals include explicit type arguments:
+
+```avenir
+var b | Box<int> = Box<int>{value = 99};
 ```
 
 Fields are initialized using named initialization: `field = value`.

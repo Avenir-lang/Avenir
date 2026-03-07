@@ -15,7 +15,8 @@ type Parser struct {
 	cur  token.Token
 	peek token.Token
 
-	errors []string
+	errors  []string
+	pending []token.Token
 }
 
 func New(l *lexer.Lexer) *Parser {
@@ -32,7 +33,12 @@ func (p *Parser) Errors() []string {
 
 func (p *Parser) nextToken() {
 	p.cur = p.peek
-	p.peek = p.l.NextToken()
+	if len(p.pending) > 0 {
+		p.peek = p.pending[0]
+		p.pending = p.pending[1:]
+	} else {
+		p.peek = p.l.NextToken()
+	}
 }
 
 func (p *Parser) errorf(pos token.Position, format string, args ...interface{}) {
@@ -124,6 +130,37 @@ func (p *Parser) ParseProgram() *ast.Program {
 	return prog
 }
 
+func (p *Parser) parseTypeParams() []*ast.TypeParam {
+	if p.cur.Kind != token.Lt {
+		return nil
+	}
+	p.nextToken()
+
+	var params []*ast.TypeParam
+	for {
+		if p.cur.Kind != token.Ident {
+			p.errorf(p.cur.Pos, "expected type parameter name")
+			break
+		}
+		params = append(params, &ast.TypeParam{
+			Name:    p.cur.Lexeme,
+			NamePos: p.cur.Pos,
+		})
+		p.nextToken()
+		if p.cur.Kind == token.Comma {
+			p.nextToken()
+			continue
+		}
+		break
+	}
+	if p.cur.Kind != token.Gt {
+		p.errorf(p.cur.Pos, "expected '>' after type parameters")
+	} else {
+		p.nextToken()
+	}
+	return params
+}
+
 func (p *Parser) parseStructDecl(isPublic bool, isMutable bool) *ast.StructDecl {
 	structTok := p.cur
 	if structTok.Kind != token.Struct {
@@ -138,6 +175,8 @@ func (p *Parser) parseStructDecl(isPublic bool, isMutable bool) *ast.StructDecl 
 	}
 	nameTok := p.cur
 	p.nextToken()
+
+	typeParams := p.parseTypeParams()
 
 	p.expect(token.LBrace)
 
@@ -195,11 +234,12 @@ func (p *Parser) parseStructDecl(isPublic bool, isMutable bool) *ast.StructDecl 
 	p.expect(token.RBrace)
 
 	return &ast.StructDecl{
-		Name:      nameTok.Lexeme,
-		NamePos:   nameTok.Pos,
-		Fields:    fields,
-		IsPublic:  isPublic,
-		IsMutable: isMutable,
+		Name:       nameTok.Lexeme,
+		NamePos:    nameTok.Pos,
+		TypeParams: typeParams,
+		Fields:     fields,
+		IsPublic:   isPublic,
+		IsMutable:  isMutable,
 	}
 }
 
@@ -488,6 +528,8 @@ func (p *Parser) parseFunDecl() *ast.FunDecl {
 	nameTok := p.cur
 	p.nextToken()
 
+	typeParams := p.parseTypeParams()
+
 	p.expect(token.LParen)
 
 	var params []*ast.Param
@@ -533,13 +575,14 @@ func (p *Parser) parseFunDecl() *ast.FunDecl {
 	body := p.parseBlock()
 
 	return &ast.FunDecl{
-		Name:     nameTok.Lexeme,
-		NamePos:  funTok.Pos,
-		Receiver: receiver,
-		Params:   params,
-		Return:   retType,
-		Body:     body,
-		IsPublic: isPublic,
+		Name:       nameTok.Lexeme,
+		NamePos:    funTok.Pos,
+		TypeParams: typeParams,
+		Receiver:   receiver,
+		Params:     params,
+		Return:     retType,
+		Body:       body,
+		IsPublic:   isPublic,
 	}
 }
 
@@ -816,6 +859,26 @@ func (p *Parser) parseType() ast.TypeNode {
 	}
 }
 
+func (p *Parser) parseTypeArgs() []ast.TypeNode {
+	p.nextToken() // consume '<'
+	var args []ast.TypeNode
+	for {
+		arg := p.parseType()
+		args = append(args, arg)
+		if p.cur.Kind == token.Comma {
+			p.nextToken()
+			continue
+		}
+		break
+	}
+	if p.cur.Kind != token.Gt {
+		p.errorf(p.cur.Pos, "expected '>' after type arguments")
+	} else {
+		p.nextToken()
+	}
+	return args
+}
+
 func (p *Parser) parseQualifiedType() ast.TypeNode {
 	startTok := p.cur
 	path := []string{startTok.Lexeme}
@@ -829,6 +892,15 @@ func (p *Parser) parseQualifiedType() ast.TypeNode {
 		}
 		path = append(path, p.cur.Lexeme)
 		p.nextToken()
+	}
+
+	if len(path) == 1 && p.cur.Kind == token.Lt {
+		typeArgs := p.parseTypeArgs()
+		return &ast.GenericInstanceType{
+			Name:     path[0],
+			NamePos:  startTok.Pos,
+			TypeArgs: typeArgs,
+		}
 	}
 
 	if len(path) == 1 {
@@ -1464,6 +1536,162 @@ func (p *Parser) parsePostfix() ast.Expr {
 	}
 }
 
+func (p *Parser) readAhead() token.Token {
+	if len(p.pending) > 0 {
+		tok := p.pending[0]
+		p.pending = p.pending[1:]
+		return tok
+	}
+	return p.l.NextToken()
+}
+
+func (p *Parser) isGenericStart() bool {
+	var ahead []token.Token
+	depth := 1
+
+	for {
+		tok := p.readAhead()
+		ahead = append(ahead, tok)
+
+		switch tok.Kind {
+		case token.Lt:
+			depth++
+		case token.Gt:
+			depth--
+			if depth == 0 {
+				nextTok := p.readAhead()
+				ahead = append(ahead, nextTok)
+				p.pending = append(ahead, p.pending...)
+				return nextTok.Kind == token.LParen || nextTok.Kind == token.LBrace
+			}
+		case token.Ident, token.IntType, token.FloatType, token.StringType,
+			token.BoolType, token.VoidType, token.AnyType, token.ErrorType,
+			token.BytesType, token.ListType, token.DictType,
+			token.Comma, token.Pipe, token.Question, token.Fun:
+			// valid in type argument context
+		case token.EOF:
+			p.pending = append(ahead, p.pending...)
+			return false
+		default:
+			p.pending = append(ahead, p.pending...)
+			return false
+		}
+	}
+}
+
+func (p *Parser) parseGenericExpr() ast.Expr {
+	nameTok := p.cur
+	p.nextToken() // consume ident
+
+	// consume '<'
+	p.nextToken()
+
+	var typeArgs []ast.TypeNode
+	for {
+		arg := p.parseType()
+		typeArgs = append(typeArgs, arg)
+		if p.cur.Kind == token.Comma {
+			p.nextToken()
+			continue
+		}
+		break
+	}
+	if p.cur.Kind != token.Gt {
+		p.errorf(p.cur.Pos, "expected '>' after type arguments")
+	} else {
+		p.nextToken()
+	}
+
+	if p.cur.Kind == token.LBrace {
+		return p.parseGenericStructLiteral(nameTok, typeArgs)
+	}
+
+	// Generic function call: ident<Type>(args)
+	ident := &ast.IdentExpr{
+		Name:    nameTok.Lexeme,
+		NamePos: nameTok.Pos,
+	}
+
+	lparen := p.cur
+	p.nextToken() // consume '('
+	var args []ast.Expr
+	if p.cur.Kind != token.RParen {
+		for {
+			var arg ast.Expr
+			if p.cur.Kind == token.Ident && p.peek.Kind == token.Assign {
+				argNameTok := p.cur
+				p.nextToken()
+				p.expect(token.Assign)
+				valueExpr := p.parseExpr()
+				arg = &ast.NamedArg{
+					Name:    argNameTok.Lexeme,
+					NamePos: argNameTok.Pos,
+					Value:   valueExpr,
+				}
+			} else {
+				arg = p.parseExpr()
+			}
+			args = append(args, arg)
+			if p.cur.Kind == token.Comma {
+				p.nextToken()
+				continue
+			}
+			break
+		}
+	}
+	rparen := p.expect(token.RParen)
+
+	return &ast.CallExpr{
+		Callee:   ident,
+		TypeArgs: typeArgs,
+		LParen:   lparen.Pos,
+		Args:     args,
+		RParen:   rparen.Pos,
+	}
+}
+
+func (p *Parser) parseGenericStructLiteral(nameTok token.Token, typeArgs []ast.TypeNode) ast.Expr {
+	lbrace := p.expect(token.LBrace)
+
+	var fields []*ast.FieldInit
+	if p.cur.Kind != token.RBrace {
+		for {
+			if p.cur.Kind != token.Ident {
+				p.errorf(p.cur.Pos, "expected field name")
+				break
+			}
+			fieldNameTok := p.cur
+			p.nextToken()
+
+			p.expect(token.Assign)
+			value := p.parseExpr()
+
+			fields = append(fields, &ast.FieldInit{
+				Name:    fieldNameTok.Lexeme,
+				NamePos: fieldNameTok.Pos,
+				Value:   value,
+			})
+
+			if p.cur.Kind == token.Comma {
+				p.nextToken()
+				continue
+			}
+			break
+		}
+	}
+
+	rbrace := p.expect(token.RBrace)
+
+	return &ast.StructLiteral{
+		TypeName:    nameTok.Lexeme,
+		TypeNamePos: nameTok.Pos,
+		TypeArgs:    typeArgs,
+		LBrace:      lbrace.Pos,
+		Fields:      fields,
+		RBrace:      rbrace.Pos,
+	}
+}
+
 func (p *Parser) parsePrimary() ast.Expr {
 	switch p.cur.Kind {
 	case token.Fun:
@@ -1471,9 +1699,12 @@ func (p *Parser) parsePrimary() ast.Expr {
 	case token.Ident, token.ErrorType:
 		// Allow error as identifier in expression contexts (for builtin function)
 		// Could be a struct literal: TypeName{field = value, ...}
-		// Peek ahead to see if it's followed by {
+		// or a generic struct literal: TypeName<T>{field = value, ...}
 		if p.peek.Kind == token.LBrace {
 			return p.parseStructLiteral()
+		}
+		if p.peek.Kind == token.Lt && p.isGenericStart() {
+			return p.parseGenericExpr()
 		}
 		// Otherwise it's just an identifier
 		tok := p.cur

@@ -104,6 +104,10 @@ func CompileWorld(world *types.World, entryMod *types.ModuleInfo, bindings *type
 	// Collect all functions from all modules
 	for modName, modInfo := range world.Modules {
 		for _, fn := range modInfo.Prog.Funcs {
+			// Skip uninstantiated generic functions
+			if len(fn.TypeParams) > 0 {
+				continue
+			}
 			idx := len(mod.Functions)
 			info := allFuncInfos[fn]
 			var upvalues []UpvalueInfo
@@ -137,6 +141,27 @@ func CompileWorld(world *types.World, entryMod *types.ModuleInfo, bindings *type
 		collectFuncLiteralsFromProg(modInfo.Prog, modName, mod, funcIndexByLiteral, &allFuncNodes, allFuncInfos)
 	}
 
+	// Collect monomorphized generic functions from bindings
+	for monoName, monoDecl := range bindings.MonomorphizedFuncs {
+		idx := len(mod.Functions)
+		irFn := &Function{
+			Name:      monoName,
+			NumParams: len(monoDecl.Params),
+			Chunk:     Chunk{},
+		}
+		mod.Functions = append(mod.Functions, irFn)
+		funcIndexByDecl[monoDecl] = idx
+		allFuncNodes = append(allFuncNodes, monoDecl)
+
+		// Resolve function literals inside monomorphized function bodies
+		monoRes := resolver.NewResolver()
+		monoFuncInfos := monoRes.ResolveFunc(monoDecl)
+		for k, v := range monoFuncInfos {
+			allFuncInfos[k] = v
+		}
+		collectFuncLiteralsInNode(monoDecl.Body, entryMod.Name, mod, funcIndexByLiteral, &allFuncNodes, allFuncInfos)
+	}
+
 	// Find main in entry module using funcIndexByDecl
 	entryModName := entryMod.Name
 	for _, fn := range entryMod.Prog.Funcs {
@@ -161,6 +186,10 @@ func CompileWorld(world *types.World, entryMod *types.ModuleInfo, bindings *type
 		// Look up struct types from the module's scope
 		if modInfo.Scope != nil {
 			for _, st := range modInfo.Prog.Structs {
+				// Skip generic struct declarations
+				if len(st.TypeParams) > 0 {
+					continue
+				}
 				// Look up the struct type symbol
 				sym := modInfo.Scope.Lookup(st.Name)
 				if sym != nil && sym.Kind == types.SymType {
@@ -175,6 +204,16 @@ func CompileWorld(world *types.World, entryMod *types.ModuleInfo, bindings *type
 				}
 			}
 		}
+	}
+
+	// Add monomorphized struct types from bindings
+	for monoName, monoStruct := range bindings.MonomorphizedStructs {
+		structTypes[monoName] = &StructTypeInfo{
+			Name:   monoName,
+			Fields: monoStruct.Fields,
+		}
+		structIndex[monoName] = idx
+		idx++
 	}
 
 	// Populate methodIndex: map receiver type name -> method name -> function index
@@ -571,6 +610,47 @@ func newFuncCompiler(c *Compiler, fnNode ast.Node, irFn *Function, fnInfo *resol
 func (fc *funcCompiler) addError(node ast.Node, format string, args ...interface{}) {
 	pos := node.Pos()
 	fc.c.addError(pos, format, args...)
+}
+
+func (fc *funcCompiler) resolveTypeNode(tn ast.TypeNode) types.Type {
+	switch t := tn.(type) {
+	case *ast.SimpleType:
+		switch t.Name {
+		case "int":
+			return types.Int
+		case "float":
+			return types.Float
+		case "string":
+			return types.String
+		case "bool":
+			return types.Bool
+		case "void":
+			return types.Void
+		case "any":
+			return types.Any
+		case "error":
+			return types.ErrorType
+		case "bytes":
+			return types.Bytes
+		default:
+			if st, ok := fc.c.structTypes[t.Name]; ok {
+				return &types.Struct{Name: st.Name}
+			}
+			return types.Any
+		}
+	case *ast.ListType:
+		var elems []types.Type
+		for _, et := range t.ElementTypes {
+			elems = append(elems, fc.resolveTypeNode(et))
+		}
+		return &types.List{ElementTypes: elems}
+	case *ast.DictType:
+		return &types.Dict{ValueType: fc.resolveTypeNode(t.ValueType)}
+	case *ast.OptionalType:
+		return &types.Optional{Inner: fc.resolveTypeNode(t.Inner)}
+	default:
+		return types.Any
+	}
 }
 
 func (fc *funcCompiler) allocLocal(name string, node ast.Node) int {
@@ -1318,10 +1398,26 @@ func (fc *funcCompiler) compileDictLiteral(lit *ast.DictLiteral) {
 }
 
 func (fc *funcCompiler) compileStructLiteral(lit *ast.StructLiteral) {
+	// Resolve struct name: for generic structs, use the monomorphized name
+	structName := lit.TypeName
+	if len(lit.TypeArgs) > 0 {
+		// Resolve type arguments to build monomorphized name
+		var concreteArgs []types.Type
+		for _, ta := range lit.TypeArgs {
+			if fc.c.bindings != nil {
+				resolved := fc.resolveTypeNode(ta)
+				concreteArgs = append(concreteArgs, resolved)
+			}
+		}
+		if len(concreteArgs) > 0 {
+			structName = types.MonomorphKey(lit.TypeName, concreteArgs)
+		}
+	}
+
 	// Get struct type info
-	structInfo, ok := fc.c.structTypes[lit.TypeName]
+	structInfo, ok := fc.c.structTypes[structName]
 	if !ok {
-		fc.addError(lit, "unknown struct type %q", lit.TypeName)
+		fc.addError(lit, "unknown struct type %q", structName)
 		return
 	}
 
@@ -1353,9 +1449,9 @@ func (fc *funcCompiler) compileStructLiteral(lit *ast.StructLiteral) {
 	}
 
 	// Get struct type index
-	structIdx, ok := fc.c.structIndex[lit.TypeName]
+	structIdx, ok := fc.c.structIndex[structName]
 	if !ok {
-		fc.addError(lit, "struct type %q not found in index", lit.TypeName)
+		fc.addError(lit, "struct type %q not found in index", structName)
 		return
 	}
 

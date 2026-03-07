@@ -52,9 +52,16 @@ func fprintNode(w io.Writer, n Node, indent int) {
 		if n.IsPublic {
 			pubStr = " pub"
 		}
+		typeParamStr := ""
+		if len(n.TypeParams) > 0 {
+			names := make([]string, len(n.TypeParams))
+			for i, tp := range n.TypeParams {
+				names[i] = tp.Name
+			}
+			typeParamStr = fmt.Sprintf("<%s>", strings.Join(names, ", "))
+		}
 		methodStr := ""
 		if n.Receiver != nil {
-			// Get type name for display
 			typeName := "unknown"
 			if simpleType, ok := n.Receiver.Type.(*SimpleType); ok {
 				typeName = simpleType.Name
@@ -65,7 +72,7 @@ func fprintNode(w io.Writer, n Node, indent int) {
 				methodStr = fmt.Sprintf(" instance method on %s (receiver: %s)", typeName, n.Receiver.Name)
 			}
 		}
-		fmt.Fprintf(w, "%sFunDecl name=%s%s%s\n", ind, n.Name, pubStr, methodStr)
+		fmt.Fprintf(w, "%sFunDecl name=%s%s%s%s\n", ind, n.Name, typeParamStr, pubStr, methodStr)
 		if n.Receiver != nil {
 			fmt.Fprintf(w, "%s  Receiver:\n", ind)
 			if n.Receiver.Kind == ReceiverStatic {
@@ -126,12 +133,26 @@ func fprintNode(w io.Writer, n Node, indent int) {
 		fmt.Fprintf(w, "%sOptionalType\n", ind)
 		fprintNode(w, n.Inner, indent+1)
 
+	case *GenericInstanceType:
+		fmt.Fprintf(w, "%sGenericInstanceType %s\n", ind, n.Name)
+		for _, ta := range n.TypeArgs {
+			fprintNode(w, ta, indent+1)
+		}
+
 	case *StructDecl:
 		pubStr := ""
 		if n.IsPublic {
 			pubStr = " pub"
 		}
-		fmt.Fprintf(w, "%sStructDecl%s name=%s\n", ind, pubStr, n.Name)
+		typeParamStr := ""
+		if len(n.TypeParams) > 0 {
+			names := make([]string, len(n.TypeParams))
+			for i, tp := range n.TypeParams {
+				names[i] = tp.Name
+			}
+			typeParamStr = fmt.Sprintf("<%s>", strings.Join(names, ", "))
+		}
+		fmt.Fprintf(w, "%sStructDecl%s name=%s%s\n", ind, pubStr, n.Name, typeParamStr)
 		for _, f := range n.Fields {
 			fmt.Fprintf(w, "%s  Field %s:\n", ind, f.Name)
 			fprintNode(w, f.Type, indent+2)

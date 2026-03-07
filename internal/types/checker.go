@@ -62,13 +62,18 @@ type Bindings struct {
 	Idents    map[*ast.IdentExpr]*Symbol
 	Members   map[*ast.MemberExpr]*Symbol
 	ExprTypes map[ast.Expr]Type
+
+	MonomorphizedStructs map[string]*Struct      // monoName -> instantiated struct type
+	MonomorphizedFuncs   map[string]*ast.FunDecl // monoName -> synthetic FunDecl
 }
 
 func NewBindings() *Bindings {
 	return &Bindings{
-		Idents:    make(map[*ast.IdentExpr]*Symbol),
-		Members:   make(map[*ast.MemberExpr]*Symbol),
-		ExprTypes: make(map[ast.Expr]Type),
+		Idents:               make(map[*ast.IdentExpr]*Symbol),
+		Members:              make(map[*ast.MemberExpr]*Symbol),
+		ExprTypes:            make(map[ast.Expr]Type),
+		MonomorphizedStructs: make(map[string]*Struct),
+		MonomorphizedFuncs:   make(map[string]*ast.FunDecl),
 	}
 }
 
@@ -120,6 +125,12 @@ type Checker struct {
 	// Visibility tracking
 	currentModule   string  // name of the module currently being checked
 	currentReceiver *Struct // struct type of the current method receiver (if any)
+
+	// Generics tracking
+	genericStructs map[string]*GenericStruct // generic struct name -> definition
+	genericFuncs   map[string]*GenericFunc   // generic func name -> definition
+	monomorphized  map[string]bool           // monomorph key -> already generated
+	typeParamScope map[string]Type           // current type parameter bindings (T -> int)
 }
 
 // CheckProgram type-checks a program and returns a list of errors (if any).
@@ -401,6 +412,30 @@ func (c *Checker) declareInterface(iface *ast.InterfaceDecl) {
 // ----- Structs -----
 
 func (c *Checker) declareStruct(st *ast.StructDecl) {
+	// If the struct has type parameters, register it as a generic struct template
+	if len(st.TypeParams) > 0 {
+		if c.genericStructs == nil {
+			c.genericStructs = make(map[string]*GenericStruct)
+		}
+		paramNames := make([]string, len(st.TypeParams))
+		for i, tp := range st.TypeParams {
+			paramNames[i] = tp.Name
+		}
+		gs := &GenericStruct{Decl: st, TypeParams: paramNames}
+		c.genericStructs[st.Name] = gs
+
+		if err := c.global.Insert(&Symbol{
+			Name:     st.Name,
+			Kind:     SymType,
+			Type:     gs,
+			Node:     st,
+			IsPublic: st.IsPublic,
+		}); err != nil {
+			c.addError(st.Pos(), "struct %q: %v", st.Name, err)
+		}
+		return
+	}
+
 	// Build field list
 	fields := make([]Field, 0, len(st.Fields))
 	fieldNames := make(map[string]bool)
@@ -487,6 +522,30 @@ func (c *Checker) declareStruct(st *ast.StructDecl) {
 // ----- Functions -----
 
 func (c *Checker) declareFunc(fn *ast.FunDecl) {
+	// If the function has type parameters, register it as a generic func template
+	if len(fn.TypeParams) > 0 && fn.Receiver == nil {
+		if c.genericFuncs == nil {
+			c.genericFuncs = make(map[string]*GenericFunc)
+		}
+		paramNames := make([]string, len(fn.TypeParams))
+		for i, tp := range fn.TypeParams {
+			paramNames[i] = tp.Name
+		}
+		gf := &GenericFunc{Decl: fn, TypeParams: paramNames}
+		c.genericFuncs[fn.Name] = gf
+
+		if err := c.global.Insert(&Symbol{
+			Name:     fn.Name,
+			Kind:     SymFunc,
+			Type:     gf,
+			Node:     fn,
+			IsPublic: fn.IsPublic,
+		}); err != nil {
+			c.addError(fn.Pos(), "function %q: %v", fn.Name, err)
+		}
+		return
+	}
+
 	// Collect parameter types
 	var params []Type
 	for _, p := range fn.Params {
@@ -587,6 +646,11 @@ func (c *Checker) declareFunc(fn *ast.FunDecl) {
 }
 
 func (c *Checker) checkFunc(fn *ast.FunDecl) {
+	// Skip uninstantiated generic functions - they are checked upon instantiation
+	if len(fn.TypeParams) > 0 {
+		return
+	}
+
 	var fnType *Func
 
 	// For methods, look up the method in the struct's method set
@@ -799,6 +863,12 @@ func (c *Checker) typeOfTypeNode(tn ast.TypeNode) Type {
 		case "bytes":
 			return Bytes
 		default:
+			// Check if it's a type parameter in scope
+			if c.typeParamScope != nil {
+				if concrete, ok := c.typeParamScope[t.Name]; ok {
+					return concrete
+				}
+			}
 			// Check if it's a user-defined struct type
 			if c.structTypes != nil {
 				if structType, ok := c.structTypes[t.Name]; ok {
@@ -892,11 +962,202 @@ func (c *Checker) typeOfTypeNode(tn ast.TypeNode) Type {
 		}
 		return &Union{Variants: variants}
 
+	case *ast.GenericInstanceType:
+		return c.instantiateGenericType(t)
+
 	default:
 		// Safety check
 		c.addError(tn.Pos(), "unsupported type node %T", tn)
 		return Invalid
 	}
+}
+
+// ----- Generics Instantiation -----
+
+func (c *Checker) instantiateGenericType(git *ast.GenericInstanceType) Type {
+	// Look up the generic struct by name from internal map
+	if c.genericStructs != nil {
+		if gs, ok := c.genericStructs[git.Name]; ok {
+			return c.instantiateGenericStruct(gs, git)
+		}
+	}
+	// Also check scope (generic structs are registered as symbols in Phase 1)
+	if sym := c.scope.Lookup(git.Name); sym != nil && sym.Kind == SymType {
+		if gs, ok := sym.Type.(*GenericStruct); ok {
+			return c.instantiateGenericStruct(gs, git)
+		}
+	}
+	c.addError(git.Pos(), "unknown generic type %q", git.Name)
+	return Invalid
+}
+
+func (c *Checker) instantiateGenericStruct(gs *GenericStruct, git *ast.GenericInstanceType) Type {
+	if len(git.TypeArgs) != len(gs.TypeParams) {
+		c.addError(git.Pos(), "generic struct %q expects %d type arguments, got %d",
+			gs.Decl.Name, len(gs.TypeParams), len(git.TypeArgs))
+		return Invalid
+	}
+
+	// Resolve type arguments
+	concreteArgs := make([]Type, len(git.TypeArgs))
+	for i, ta := range git.TypeArgs {
+		concreteArgs[i] = c.typeOfTypeNode(ta)
+		if IsInvalid(concreteArgs[i]) {
+			return Invalid
+		}
+	}
+
+	// Build monomorphized name
+	monoName := MonomorphKey(gs.Decl.Name, concreteArgs)
+
+	// Check if already monomorphized
+	if c.structTypes != nil {
+		if existing, ok := c.structTypes[monoName]; ok {
+			return existing
+		}
+	}
+
+	// Build type param -> concrete type mapping
+	mapping := make(map[string]Type, len(gs.TypeParams))
+	for i, name := range gs.TypeParams {
+		mapping[name] = concreteArgs[i]
+	}
+
+	// Save and set type param scope
+	prevScope := c.typeParamScope
+	c.typeParamScope = mapping
+	defer func() { c.typeParamScope = prevScope }()
+
+	// Build fields with substituted types
+	st := gs.Decl
+	fields := make([]Field, 0, len(st.Fields))
+	for _, f := range st.Fields {
+		fieldType := c.typeOfTypeNode(f.Type)
+		if IsInvalid(fieldType) {
+			continue
+		}
+
+		fieldMutable := st.IsMutable
+		if f.IsMutable {
+			fieldMutable = true
+		}
+
+		fields = append(fields, Field{
+			Name:        f.Name,
+			Type:        fieldType,
+			IsPublic:    f.IsPublic,
+			IsMutable:   fieldMutable,
+			DefaultExpr: f.DefaultExpr,
+		})
+	}
+
+	// Create the monomorphized struct type
+	structType := &Struct{
+		Name:            monoName,
+		Fields:          fields,
+		IsPublic:        st.IsPublic,
+		IsMutable:       st.IsMutable,
+		InstanceMethods: make(map[string]*Method),
+		StaticMethods:   make(map[string]*Method),
+	}
+
+	if c.structTypes == nil {
+		c.structTypes = make(map[string]*Struct)
+	}
+	c.structTypes[monoName] = structType
+
+	if c.bindings != nil {
+		c.bindings.MonomorphizedStructs[monoName] = structType
+	}
+
+	return structType
+}
+
+func (c *Checker) instantiateGenericFunc(gf *GenericFunc, typeArgs []Type) (*Func, string) {
+	if len(typeArgs) != len(gf.TypeParams) {
+		c.addError(gf.Decl.Pos(), "generic function %q expects %d type arguments, got %d",
+			gf.Decl.Name, len(gf.TypeParams), len(typeArgs))
+		return nil, ""
+	}
+
+	monoName := MonomorphKey(gf.Decl.Name, typeArgs)
+
+	// Build type param mapping
+	mapping := make(map[string]Type, len(gf.TypeParams))
+	for i, name := range gf.TypeParams {
+		mapping[name] = typeArgs[i]
+	}
+
+	// Save and set type param scope
+	prevScope := c.typeParamScope
+	c.typeParamScope = mapping
+	defer func() { c.typeParamScope = prevScope }()
+
+	// Resolve parameter types with substitution
+	fn := gf.Decl
+	var paramTypes []Type
+	for _, p := range fn.Params {
+		pt := c.typeOfTypeNode(p.Type)
+		paramTypes = append(paramTypes, pt)
+	}
+	retType := c.typeOfTypeNode(fn.Return)
+
+	fnType := &Func{
+		ParamTypes: paramTypes,
+		Result:     retType,
+	}
+
+	// Register the monomorphized function in scope if not already done
+	if c.monomorphized == nil {
+		c.monomorphized = make(map[string]bool)
+	}
+	if !c.monomorphized[monoName] {
+		c.monomorphized[monoName] = true
+
+		// Insert monomorphized function as a new symbol
+		monoDecl := &ast.FunDecl{
+			Name:     monoName,
+			NamePos:  fn.NamePos,
+			Params:   fn.Params,
+			Return:   fn.Return,
+			Body:     fn.Body,
+			IsPublic: fn.IsPublic,
+		}
+
+		_ = c.global.Insert(&Symbol{
+			Name:     monoName,
+			Kind:     SymFunc,
+			Type:     fnType,
+			Node:     monoDecl,
+			IsPublic: fn.IsPublic,
+		})
+
+		if c.bindings != nil {
+			c.bindings.MonomorphizedFuncs[monoName] = monoDecl
+		}
+
+		// Type-check the body with substituted types
+		prevScopeCheck := c.scope
+		c.scope = NewScope(c.global)
+		prevRet := c.currentReturn
+		c.currentReturn = retType
+
+		for i, param := range fn.Params {
+			_ = c.scope.Insert(&Symbol{
+				Name: param.Name,
+				Kind: SymVar,
+				Type: paramTypes[i],
+				Node: param,
+			})
+		}
+
+		c.checkBlock(fn.Body)
+
+		c.currentReturn = prevRet
+		c.scope = prevScopeCheck
+	}
+
+	return fnType, monoName
 }
 
 // ----- Statements -----
@@ -1688,6 +1949,33 @@ func (c *Checker) checkDictLiteral(lit *ast.DictLiteral) Type {
 }
 
 func (c *Checker) checkStructLiteral(lit *ast.StructLiteral) Type {
+	// Handle generic struct literals: Box<int>{value = 10}
+	if len(lit.TypeArgs) > 0 {
+		var gs *GenericStruct
+		if c.genericStructs != nil {
+			gs = c.genericStructs[lit.TypeName]
+		}
+		if gs == nil {
+			if sym := c.scope.Lookup(lit.TypeName); sym != nil && sym.Kind == SymType {
+				gs, _ = sym.Type.(*GenericStruct)
+			}
+		}
+		if gs == nil {
+			c.addError(lit.Pos(), "unknown generic struct type %q", lit.TypeName)
+			return Invalid
+		}
+		git := &ast.GenericInstanceType{
+			Name:     lit.TypeName,
+			NamePos:  lit.TypeNamePos,
+			TypeArgs: lit.TypeArgs,
+		}
+		structType, ok := c.instantiateGenericStruct(gs, git).(*Struct)
+		if !ok {
+			return Invalid
+		}
+		return c.checkStructLiteralFields(lit, structType)
+	}
+
 	// Look up struct type
 	var structType *Struct
 	if c.structTypes != nil {
@@ -1709,6 +1997,10 @@ func (c *Checker) checkStructLiteral(lit *ast.StructLiteral) Type {
 		return Invalid
 	}
 
+	return c.checkStructLiteralFields(lit, structType)
+}
+
+func (c *Checker) checkStructLiteralFields(lit *ast.StructLiteral, structType *Struct) Type {
 	// Build map of provided fields
 	provided := make(map[string]bool)
 	fieldMap := make(map[string]Field)
@@ -1725,7 +2017,7 @@ func (c *Checker) checkStructLiteral(lit *ast.StructLiteral) Type {
 
 		field, ok := fieldMap[fieldInit.Name]
 		if !ok {
-			c.addError(fieldInit.Pos(), "unknown field %q in struct %q", fieldInit.Name, lit.TypeName)
+			c.addError(fieldInit.Pos(), "unknown field %q in struct %q", fieldInit.Name, structType.Name)
 			continue
 		}
 
@@ -1745,7 +2037,6 @@ func (c *Checker) checkStructLiteral(lit *ast.StructLiteral) Type {
 			if field.DefaultExpr == nil {
 				c.addError(lit.Pos(), "missing required field %q in struct literal", field.Name)
 			}
-			// Fields with defaults are automatically filled in (handled by IR compiler)
 		}
 	}
 
@@ -1793,7 +2084,78 @@ func (c *Checker) isCompileTimeConstant(e ast.Expr) bool {
 	}
 }
 
+func (c *Checker) checkGenericCall(call *ast.CallExpr) Type {
+	ident, ok := call.Callee.(*ast.IdentExpr)
+	if !ok {
+		c.addError(call.Pos(), "generic type arguments are only supported on named function calls")
+		return Invalid
+	}
+
+	sym := c.scope.Lookup(ident.Name)
+	if sym == nil {
+		c.addError(ident.Pos(), "undefined function %q", ident.Name)
+		return Invalid
+	}
+
+	gf, ok := sym.Type.(*GenericFunc)
+	if !ok {
+		c.addError(call.Pos(), "function %q is not generic", ident.Name)
+		return Invalid
+	}
+
+	// Resolve type arguments
+	concreteArgs := make([]Type, len(call.TypeArgs))
+	for i, ta := range call.TypeArgs {
+		concreteArgs[i] = c.typeOfTypeNode(ta)
+		if IsInvalid(concreteArgs[i]) {
+			return Invalid
+		}
+	}
+
+	fnType, monoName := c.instantiateGenericFunc(gf, concreteArgs)
+	if fnType == nil {
+		return Invalid
+	}
+
+	// Store the monomorphized name in bindings for the compiler
+	if c.bindings != nil {
+		var monoNode *ast.FunDecl
+		if decl, ok := c.bindings.MonomorphizedFuncs[monoName]; ok {
+			monoNode = decl
+		}
+		c.bindings.Idents[ident] = &Symbol{
+			Name: monoName,
+			Kind: SymFunc,
+			Type: fnType,
+			Node: monoNode,
+		}
+	}
+
+	// Type-check arguments (positional only for now)
+	if len(call.Args) != len(fnType.ParamTypes) {
+		c.addError(call.Pos(), "function %s expects %d arguments, got %d",
+			ident.Name, len(fnType.ParamTypes), len(call.Args))
+		return fnType.Result
+	}
+
+	for i, arg := range call.Args {
+		argType := c.checkExpr(arg)
+		paramType := fnType.ParamTypes[i]
+		if !c.assignable(paramType, argType) {
+			c.addError(arg.Pos(), "cannot use expression of type %s as argument %d of type %s",
+				argType.String(), i+1, paramType.String())
+		}
+	}
+
+	return fnType.Result
+}
+
 func (c *Checker) checkCall(call *ast.CallExpr) Type {
+	// Handle generic function calls: ident<Type>(args)
+	if len(call.TypeArgs) > 0 {
+		return c.checkGenericCall(call)
+	}
+
 	calleeType := c.checkExpr(call.Callee)
 
 	fnType, ok := calleeType.(*Func)

@@ -328,6 +328,105 @@ func (i *Interface) equal(other Type) bool {
 	return true
 }
 
+// TypeVar represents a generic type parameter (e.g. T in Box<T>).
+type TypeVar struct {
+	Name string
+}
+
+func (tv *TypeVar) String() string { return tv.Name }
+
+func (tv *TypeVar) equal(other Type) bool {
+	o, ok := other.(*TypeVar)
+	if !ok {
+		return false
+	}
+	return tv.Name == o.Name
+}
+
+// GenericStruct holds the uninstantiated generic struct definition.
+type GenericStruct struct {
+	Decl       *ast.StructDecl
+	TypeParams []string
+}
+
+func (gs *GenericStruct) String() string { return gs.Decl.Name + "<...>" }
+func (gs *GenericStruct) equal(other Type) bool {
+	o, ok := other.(*GenericStruct)
+	if !ok {
+		return false
+	}
+	return gs.Decl.Name == o.Decl.Name
+}
+
+// GenericFunc holds the uninstantiated generic function definition.
+type GenericFunc struct {
+	Decl       *ast.FunDecl
+	TypeParams []string
+}
+
+func (gf *GenericFunc) String() string { return gf.Decl.Name + "<...>" }
+func (gf *GenericFunc) equal(other Type) bool {
+	o, ok := other.(*GenericFunc)
+	if !ok {
+		return false
+	}
+	return gf.Decl.Name == o.Decl.Name
+}
+
+// SubstituteType replaces all TypeVar occurrences in t using the provided mapping.
+func SubstituteType(t Type, mapping map[string]Type) Type {
+	switch ty := t.(type) {
+	case *TypeVar:
+		if concrete, ok := mapping[ty.Name]; ok {
+			return concrete
+		}
+		return t
+	case *List:
+		elems := make([]Type, len(ty.ElementTypes))
+		for i, et := range ty.ElementTypes {
+			elems[i] = SubstituteType(et, mapping)
+		}
+		return &List{ElementTypes: elems}
+	case *Dict:
+		if ty.ValueType == nil {
+			return t
+		}
+		return &Dict{ValueType: SubstituteType(ty.ValueType, mapping)}
+	case *Func:
+		params := make([]Type, len(ty.ParamTypes))
+		for i, pt := range ty.ParamTypes {
+			params[i] = SubstituteType(pt, mapping)
+		}
+		var res Type
+		if ty.Result != nil {
+			res = SubstituteType(ty.Result, mapping)
+		}
+		return &Func{ParamTypes: params, Result: res}
+	case *Optional:
+		return &Optional{Inner: SubstituteType(ty.Inner, mapping)}
+	case *Union:
+		variants := make([]Type, len(ty.Variants))
+		for i, v := range ty.Variants {
+			variants[i] = SubstituteType(v, mapping)
+		}
+		return &Union{Variants: variants}
+	default:
+		return t
+	}
+}
+
+// MonomorphKey builds a unique string key for a set of concrete type arguments.
+func MonomorphKey(baseName string, typeArgs []Type) string {
+	key := baseName + "$"
+	for i, ta := range typeArgs {
+		if i > 0 {
+			key += ","
+		}
+		key += ta.String()
+	}
+	return key
+}
+
 // Equal - public function for type checking
 func Equal(a, b Type) bool {
 	if a == nil || b == nil {

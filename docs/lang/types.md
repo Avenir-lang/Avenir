@@ -190,6 +190,21 @@ type Point does not satisfy interface Stringer: incompatible method signatures: 
 
 ## Composite Types
 
+### Generic User-Defined Types
+
+User-defined structs can be generic:
+
+```avenir
+struct Box<T> {
+    value | T
+}
+
+var a | Box<int> = Box<int>{value = 1};
+var b | Box<string> = Box<string>{value = "hi"};
+```
+
+Type arguments must be explicit.
+
 ### Lists
 
 Lists are sequences of values. Lists can have homogeneous or heterogeneous element types:
@@ -200,6 +215,8 @@ var mixed | list<int, string> = [1, "two", 3];
 ```
 
 Lists use structural typing: two lists are equal if they have the same element types.
+
+`list<...>` is a built-in parametric type, not a user-defined generic struct.
 
 ### Dicts
 
@@ -213,6 +230,8 @@ var scores | dict<int> = { alice: 10, bob: 12 };
 
 Keys are always strings; values must be assignable to `T`.
 Use `dict.get()` when a key may be missing; it returns an optional `T?`.
+
+`dict<T>` is also a built-in parametric type (not a user-defined generic type).
 
 ### Structs
 
@@ -298,3 +317,5 @@ fun name(param1 | type1, param2 | type2) | returnType {
 ## Type Inference
 
 Avenir requires explicit type annotations. Type inference is not currently supported.
+
+Generic type argument inference is also not currently supported.

@@ -14,6 +14,29 @@ fun name(param1 | type1, param2 | type2) | returnType {
 
 The return type is required. Use `void` if the function doesn't return a value.
 
+### Generic Functions
+
+Functions can declare type parameters after the function name:
+
+```avenir
+fun identity<T>(x | T) | T {
+    return x;
+}
+
+fun pickFirst<T, U>(a | T, b | U) | T {
+    return a;
+}
+```
+
+At call sites, generic type arguments are explicit:
+
+```avenir
+var n | int = identity<int>(42);
+var s | string = identity<string>("hello");
+```
+
+Type argument inference is not supported yet.
+
 Example:
 
 ```avenir
@@ -154,6 +177,12 @@ Functions are called using parentheses:
 
 ```avenir
 var result | int = add(10, 20);
+```
+
+Generic calls include type arguments:
+
+```avenir
+var value | int = identity<int>(10);
 ```
 
 Method calls use dot notation:

@@ -69,6 +69,21 @@ var mixed | <int|string> = 1;
 `fun(T1, T2) | R` for first‑class functions. Parameter and return types are
 structural for equivalence.
 
+### Generics
+
+The checker supports explicit generics for user-defined structs and functions:
+
+- Generic struct declarations: `struct Box<T> { ... }`
+- Generic function declarations: `fun identity<T>(x | T) | T { ... }`
+- Generic type usage: `Box<int>`
+- Generic call usage: `identity<int>(10)`
+
+Type arguments are explicit. Generic type argument inference is not currently
+implemented.
+
+Built-in collections (`list<...>`, `dict<...>`) are parametric built-ins and are
+handled separately from user-defined generics.
+
 ## Name Resolution
 
 The checker populates scopes with:
@@ -90,6 +105,16 @@ High‑level flow (simplified):
 4. Declare functions and methods.
 5. Type‑check all statements and expressions.
 6. Produce `Bindings` metadata for IR compilation.
+
+For generics, declaration and checking include additional steps:
+
+1. Register generic templates as `GenericStruct` / `GenericFunc` symbols.
+2. On `Name<TypeArgs>` use, resolve concrete type arguments.
+3. Instantiate concrete types/signatures via substitution.
+4. Register monomorphized structs/functions under generated names
+   (for example, `Box$int`, `identity$int`).
+5. Emit these monomorphized entries through `Bindings` so IR compilation can
+   include only instantiated versions.
 
 ## Assignability Rules (Highlights)
 
@@ -121,6 +146,16 @@ The checker enforces operator rules, for example:
 Builtins are registered via `builtins.Meta` and injected into scope as regular
 functions (`ReceiverType == TypeVoid`). Builtin methods are resolved at member
 access time based on the receiver’s type.
+
+## Bindings Output
+
+`Bindings` includes expression/member resolution and generic instantiation data:
+
+- `Idents`, `Members`, `ExprTypes`
+- `MonomorphizedStructs` (`monoName -> *types.Struct`)
+- `MonomorphizedFuncs` (`monoName -> *ast.FunDecl`)
+
+The IR compiler uses monomorphized maps to collect concrete generic instances.
 
 ## Errors
 

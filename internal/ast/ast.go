@@ -60,14 +60,22 @@ func (d *ImportDecl) Pos() token.Position { return d.ImportPos }
 
 // FunDecl / Param
 
+type TypeParam struct {
+	Name    string
+	NamePos token.Position
+}
+
+func (tp *TypeParam) Pos() token.Position { return tp.NamePos }
+
 type FunDecl struct {
-	Name     string
-	NamePos  token.Position
-	Receiver *Receiver // nil for regular functions, non-nil for methods
-	Params   []*Param
-	Return   TypeNode
-	Body     *BlockStmt
-	IsPublic bool // true if declared with "pub fun"
+	Name       string
+	NamePos    token.Position
+	TypeParams []*TypeParam // generic type parameters, e.g. <T, U>
+	Receiver   *Receiver    // nil for regular functions, non-nil for methods
+	Params     []*Param
+	Return     TypeNode
+	Body       *BlockStmt
+	IsPublic   bool // true if declared with "pub fun"
 }
 
 // ReceiverKind distinguishes between instance and static methods.
@@ -102,11 +110,12 @@ func (p *Param) Pos() token.Position { return p.NamePos }
 // ---------- Structs ----------
 
 type StructDecl struct {
-	Name      string
-	NamePos   token.Position
-	Fields    []*FieldDecl
-	IsPublic  bool
-	IsMutable bool // true if declared with "mut struct"
+	Name       string
+	NamePos    token.Position
+	TypeParams []*TypeParam // generic type parameters, e.g. <T, U>
+	Fields     []*FieldDecl
+	IsPublic   bool
+	IsMutable  bool // true if declared with "mut struct"
 }
 
 func (s *StructDecl) Pos() token.Position { return s.NamePos }
@@ -201,6 +210,15 @@ type OptionalType struct {
 
 func (t *OptionalType) Pos() token.Position { return t.Inner.Pos() }
 func (t *OptionalType) typeNode()           {}
+
+type GenericInstanceType struct {
+	Name     string
+	NamePos  token.Position
+	TypeArgs []TypeNode
+}
+
+func (t *GenericInstanceType) Pos() token.Position { return t.NamePos }
+func (t *GenericInstanceType) typeNode()           {}
 
 // ---------- Statements ----------
 
@@ -451,6 +469,7 @@ func (e *DictLiteral) exprNode()           {}
 type StructLiteral struct {
 	TypeName    string
 	TypeNamePos token.Position
+	TypeArgs    []TypeNode // generic type arguments, e.g. Box<int>
 	LBrace      token.Position
 	Fields      []*FieldInit
 	RBrace      token.Position
@@ -478,10 +497,11 @@ func (e *FuncLiteral) Pos() token.Position { return e.FunPos }
 func (e *FuncLiteral) exprNode()           {}
 
 type CallExpr struct {
-	Callee Expr
-	LParen token.Position
-	Args   []Expr
-	RParen token.Position
+	Callee   Expr
+	TypeArgs []TypeNode // generic type arguments, e.g. identity<int>(x)
+	LParen   token.Position
+	Args     []Expr
+	RParen   token.Position
 }
 
 func (e *CallExpr) Pos() token.Position { return e.Callee.Pos() }

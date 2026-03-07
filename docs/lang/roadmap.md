@@ -6,7 +6,8 @@ language evolves.
 ## Language Core
 
 - Native backend for `avenir build -target=native` (currently unimplemented)
-- Generics for user-defined types and collections
+- Generic type argument inference
+- Generics for built-in collections ergonomics
 - Optional chaining (`x?.field`) and related ergonomics
 - Pattern matching / match expressions
 - `continue` statement in loops

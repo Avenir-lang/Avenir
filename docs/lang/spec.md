@@ -20,6 +20,8 @@ docs in this directory.
 - Optional: `T?`
 - Union: `<T1|T2|...>`
 - Struct and interface types
+- Generic user-defined struct/function declarations: `Name<T, U, ...>`
+- Generic usages require explicit type arguments (no inference)
 
 ## Expressions
 
@@ -27,6 +29,7 @@ docs in this directory.
 - String concatenation via `+` is allowed only for `string + string`.
 - Indexing: `list[int]`, `bytes[int]`, `dict[string]`.
 - Member access: `expr.field` and `expr.method(...)`.
+- Generic calls: `fn<T, U>(...)`.
 
 ## Statements
 
