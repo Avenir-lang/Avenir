@@ -381,12 +381,29 @@ func collectFuncLiteralsInNode(node ast.Node, modName string, mod *Module, funcI
 		if n.Body != nil {
 			collectFuncLiteralsInNode(n.Body, modName, mod, funcIndexByLiteral, allFuncNodes, allFuncInfos)
 		}
+	case *ast.SwitchStmt:
+		collectFuncLiteralsInNode(n.Expr, modName, mod, funcIndexByLiteral, allFuncNodes, allFuncInfos)
+		for _, clause := range n.Cases {
+			if clause.Pattern != nil {
+				collectFuncLiteralsInNode(clause.Pattern, modName, mod, funcIndexByLiteral, allFuncNodes, allFuncInfos)
+			}
+			for _, st := range clause.Body {
+				collectFuncLiteralsInNode(st, modName, mod, funcIndexByLiteral, allFuncNodes, allFuncInfos)
+			}
+		}
+		for _, st := range n.Default {
+			collectFuncLiteralsInNode(st, modName, mod, funcIndexByLiteral, allFuncNodes, allFuncInfos)
+		}
 	case *ast.TryStmt:
 		if n.Body != nil {
 			collectFuncLiteralsInNode(n.Body, modName, mod, funcIndexByLiteral, allFuncNodes, allFuncInfos)
 		}
 		if n.CatchBody != nil {
 			collectFuncLiteralsInNode(n.CatchBody, modName, mod, funcIndexByLiteral, allFuncNodes, allFuncInfos)
+		}
+	case *ast.DeferStmt:
+		if n.Call != nil {
+			collectFuncLiteralsInNode(n.Call, modName, mod, funcIndexByLiteral, allFuncNodes, allFuncInfos)
 		}
 	case *ast.ThrowStmt:
 		collectFuncLiteralsInNode(n.Expr, modName, mod, funcIndexByLiteral, allFuncNodes, allFuncInfos)
@@ -413,6 +430,17 @@ func collectFuncLiteralsInNode(node ast.Node, modName string, mod *Module, funcI
 		}
 	case *ast.MemberExpr:
 		collectFuncLiteralsInNode(n.X, modName, mod, funcIndexByLiteral, allFuncNodes, allFuncInfos)
+	case *ast.OptionalMemberExpr:
+		collectFuncLiteralsInNode(n.X, modName, mod, funcIndexByLiteral, allFuncNodes, allFuncInfos)
+	case *ast.OptionalCallExpr:
+		collectFuncLiteralsInNode(n.Callee, modName, mod, funcIndexByLiteral, allFuncNodes, allFuncInfos)
+		for _, arg := range n.Args {
+			if namedArg, ok := arg.(*ast.NamedArg); ok {
+				collectFuncLiteralsInNode(namedArg.Value, modName, mod, funcIndexByLiteral, allFuncNodes, allFuncInfos)
+			} else {
+				collectFuncLiteralsInNode(arg, modName, mod, funcIndexByLiteral, allFuncNodes, allFuncInfos)
+			}
+		}
 	case *ast.AwaitExpr:
 		collectFuncLiteralsInNode(n.Expr, modName, mod, funcIndexByLiteral, allFuncNodes, allFuncInfos)
 	}
@@ -474,8 +502,31 @@ func findFuncLiteralInNode(node ast.Node, target *ast.FuncLiteral) bool {
 		if findFuncLiteralInNode(n.ListExpr, target) || (n.Body != nil && findFuncLiteralInNode(n.Body, target)) {
 			return true
 		}
+	case *ast.SwitchStmt:
+		if findFuncLiteralInNode(n.Expr, target) {
+			return true
+		}
+		for _, clause := range n.Cases {
+			if clause.Pattern != nil && findFuncLiteralInNode(clause.Pattern, target) {
+				return true
+			}
+			for _, st := range clause.Body {
+				if findFuncLiteralInNode(st, target) {
+					return true
+				}
+			}
+		}
+		for _, st := range n.Default {
+			if findFuncLiteralInNode(st, target) {
+				return true
+			}
+		}
 	case *ast.TryStmt:
 		if (n.Body != nil && findFuncLiteralInNode(n.Body, target)) || (n.CatchBody != nil && findFuncLiteralInNode(n.CatchBody, target)) {
+			return true
+		}
+	case *ast.DeferStmt:
+		if n.Call != nil && findFuncLiteralInNode(n.Call, target) {
 			return true
 		}
 	case *ast.ThrowStmt:
@@ -517,6 +568,23 @@ func findFuncLiteralInNode(node ast.Node, target *ast.FuncLiteral) bool {
 		if findFuncLiteralInNode(n.X, target) {
 			return true
 		}
+	case *ast.OptionalMemberExpr:
+		if findFuncLiteralInNode(n.X, target) {
+			return true
+		}
+	case *ast.OptionalCallExpr:
+		if findFuncLiteralInNode(n.Callee, target) {
+			return true
+		}
+		for _, arg := range n.Args {
+			if namedArg, ok := arg.(*ast.NamedArg); ok {
+				if findFuncLiteralInNode(namedArg.Value, target) {
+					return true
+				}
+			} else if findFuncLiteralInNode(arg, target) {
+				return true
+			}
+		}
 	case *ast.AwaitExpr:
 		if findFuncLiteralInNode(n.Expr, target) {
 			return true
@@ -556,7 +624,9 @@ func (s *localScope) lookup(name string) (int, bool) {
 // ---------- funcCompiler ----------
 
 type loopContext struct {
-	breakJumps []int // indices of OpJump instructions that should jump to loop exit
+	breakJumps     []int
+	continueTarget int
+	continueJumps  []int
 }
 
 type funcCompiler struct {
@@ -697,8 +767,8 @@ func (fc *funcCompiler) resolveLocal(name string, node ast.Node) int {
 }
 
 // lookupUpvalue checks if a name is an upvalue for the current function.
-func (fc *funcCompiler) pushLoop() {
-	fc.loopStack = append(fc.loopStack, loopContext{})
+func (fc *funcCompiler) pushLoop(continueTarget int) {
+	fc.loopStack = append(fc.loopStack, loopContext{continueTarget: continueTarget})
 }
 
 func (fc *funcCompiler) recordBreakJump(jumpIndex int) {
@@ -722,6 +792,18 @@ func (fc *funcCompiler) popLoop(afterLoopIP int) {
 	for _, idx := range ctx.breakJumps {
 		fc.chunk.Code[idx].A = afterLoopIP
 	}
+}
+
+func (fc *funcCompiler) setLoopContinueTarget(target int) {
+	if len(fc.loopStack) == 0 {
+		return
+	}
+	top := len(fc.loopStack) - 1
+	fc.loopStack[top].continueTarget = target
+	for _, idx := range fc.loopStack[top].continueJumps {
+		fc.chunk.Code[idx].A = target
+	}
+	fc.loopStack[top].continueJumps = nil
 }
 
 func (fc *funcCompiler) lookupUpvalue(name string) (int, bool) {
@@ -820,6 +902,9 @@ func (fc *funcCompiler) compileStmt(s ast.Stmt) {
 	case *ast.ForEachStmt:
 		fc.compileForEach(st)
 
+	case *ast.SwitchStmt:
+		fc.compileSwitch(st)
+
 	case *ast.ThrowStmt:
 		fc.compileExpr(st.Expr)
 		fc.chunk.Emit(OpThrow, 0, 0)
@@ -838,6 +923,12 @@ func (fc *funcCompiler) compileStmt(s ast.Stmt) {
 	case *ast.BreakStmt:
 		fc.compileBreak(st)
 
+	case *ast.ContinueStmt:
+		fc.compileContinue(st)
+
+	case *ast.DeferStmt:
+		fc.compileDefer(st)
+
 	default:
 		// Other statements will be handled here
 	}
@@ -854,12 +945,66 @@ func (fc *funcCompiler) compileBreak(s *ast.BreakStmt) {
 	fc.recordBreakJump(jumpIndex)
 }
 
-func (fc *funcCompiler) compileWhile(s *ast.WhileStmt) {
-	// Start a new loop context
-	fc.pushLoop()
+func (fc *funcCompiler) compileContinue(s *ast.ContinueStmt) {
+	if len(fc.loopStack) == 0 {
+		fc.addError(s, "'continue' used outside of a loop")
+		return
+	}
+	top := len(fc.loopStack) - 1
+	if fc.loopStack[top].continueTarget >= 0 {
+		fc.chunk.Emit(OpJump, fc.loopStack[top].continueTarget, 0)
+		return
+	}
+	jumpIndex := fc.chunk.Emit(OpJump, 0, 0)
+	fc.loopStack[top].continueJumps = append(fc.loopStack[top].continueJumps, jumpIndex)
+}
 
+func (fc *funcCompiler) compileDefer(s *ast.DeferStmt) {
+	if s.Call == nil {
+		fc.addError(s, "defer expects a call expression")
+		return
+	}
+
+	argCount := 0
+	if memberCallee, ok := s.Call.Callee.(*ast.MemberExpr); ok {
+		if fc.c.bindings != nil {
+			if sym, ok := fc.c.bindings.Members[memberCallee]; ok && sym.Kind == types.SymFunc && sym.Node == nil {
+				xType := fc.c.bindings.ExprTypes[memberCallee.X]
+				if _, isStruct := xType.(*types.Struct); !isStruct {
+					fc.addError(s, "defer does not support built-in method calls")
+					return
+				}
+			}
+			xType := fc.c.bindings.ExprTypes[memberCallee.X]
+			if opt, ok := xType.(*types.Optional); ok {
+				xType = opt.Inner
+			}
+			if _, ok := xType.(*types.Struct); ok {
+				fc.compileExpr(memberCallee.X)
+				argCount++
+			}
+		}
+	}
+
+	for _, arg := range s.Call.Args {
+		if namedArg, ok := arg.(*ast.NamedArg); ok {
+			fc.compileExpr(namedArg.Value)
+		} else {
+			fc.compileExpr(arg)
+		}
+		argCount++
+	}
+
+	fc.compileExpr(s.Call.Callee)
+	fc.chunk.Emit(OpPushDefer, argCount, 0)
+}
+
+func (fc *funcCompiler) compileWhile(s *ast.WhileStmt) {
 	// Label for loop start
 	loopStart := len(fc.chunk.Code)
+
+	// Start a new loop context
+	fc.pushLoop(loopStart)
 
 	// Compile condition
 	fc.compileExpr(s.Cond)
@@ -886,7 +1031,7 @@ func (fc *funcCompiler) compileFor(s *ast.ForStmt) {
 	}
 
 	// Start a new loop context
-	fc.pushLoop()
+	fc.pushLoop(-1)
 
 	// Label for loop condition
 	condStart := len(fc.chunk.Code)
@@ -900,6 +1045,13 @@ func (fc *funcCompiler) compileFor(s *ast.ForStmt) {
 
 	// Compile body
 	fc.compileBlock(s.Body)
+
+	postStart := len(fc.chunk.Code)
+	if s.Post != nil {
+		fc.setLoopContinueTarget(postStart)
+	} else {
+		fc.setLoopContinueTarget(condStart)
+	}
 
 	// Compile post (if present)
 	if s.Post != nil {
@@ -937,7 +1089,7 @@ func (fc *funcCompiler) compileForEach(s *ast.ForEachStmt) {
 	varSlot := fc.allocLocal(s.VarName, s)
 
 	// Start a new loop context
-	fc.pushLoop()
+	fc.pushLoop(-1)
 
 	// Label for loop start
 	loopStart := len(fc.chunk.Code)
@@ -963,6 +1115,9 @@ func (fc *funcCompiler) compileForEach(s *ast.ForEachStmt) {
 	// Compile body
 	fc.compileBlock(s.Body)
 
+	incrementStart := len(fc.chunk.Code)
+	fc.setLoopContinueTarget(incrementStart)
+
 	// Increment index
 	oneIdx := fc.chunk.AddConstInt(1)
 	fc.chunk.Emit(OpLoadLocal, indexSlot, 0)
@@ -980,6 +1135,40 @@ func (fc *funcCompiler) compileForEach(s *ast.ForEachStmt) {
 
 	// Patch 'break' jumps in this loop
 	fc.popLoop(afterLoop)
+}
+
+func (fc *funcCompiler) compileSwitch(s *ast.SwitchStmt) {
+	tmpName := fmt.Sprintf("__switch_%d", len(fc.chunk.Code))
+	tmpSlot := fc.allocLocal(tmpName, s)
+	fc.compileExpr(s.Expr)
+	fc.chunk.Emit(OpStoreLocal, tmpSlot, 0)
+	fc.chunk.Emit(OpPop, 0, 0)
+
+	endJumps := make([]int, 0)
+	for _, clause := range s.Cases {
+		fc.chunk.Emit(OpLoadLocal, tmpSlot, 0)
+		fc.compileExpr(clause.Pattern)
+		fc.chunk.Emit(OpEq, 0, 0)
+		jumpIfFalseIdx := fc.chunk.Emit(OpJumpIfFalse, 0, 0)
+
+		for _, st := range clause.Body {
+			fc.compileStmt(st)
+		}
+
+		endJumps = append(endJumps, fc.chunk.Emit(OpJump, 0, 0))
+		fc.chunk.Code[jumpIfFalseIdx].A = len(fc.chunk.Code)
+	}
+
+	if s.Default != nil {
+		for _, st := range s.Default {
+			fc.compileStmt(st)
+		}
+	}
+
+	endPos := len(fc.chunk.Code)
+	for _, j := range endJumps {
+		fc.chunk.Code[j].A = endPos
+	}
 }
 
 func (fc *funcCompiler) compileTry(s *ast.TryStmt) {
@@ -1377,6 +1566,120 @@ func (fc *funcCompiler) compileExpr(e ast.Expr) {
 			}
 		}
 		fc.addError(ex, "cannot resolve member %q", ex.Name)
+
+	case *ast.OptionalMemberExpr:
+		fc.compileExpr(ex.X)
+		jumpIfNoneIdx := fc.chunk.Emit(OpJumpIfNone, 0, 0)
+		if fc.c.bindings != nil {
+			xType := fc.c.bindings.ExprTypes[ex.X]
+			if opt, ok := xType.(*types.Optional); ok {
+				xType = opt.Inner
+			}
+			if structType, ok := xType.(*types.Struct); ok {
+				fieldIdx := -1
+				for i, f := range structType.Fields {
+					if f.Name == ex.Name {
+						fieldIdx = i
+						break
+					}
+				}
+				if fieldIdx >= 0 {
+					fc.chunk.Emit(OpLoadField, fieldIdx, 0)
+					fc.chunk.Emit(OpMakeSome, 0, 0)
+					fc.chunk.Code[jumpIfNoneIdx].A = len(fc.chunk.Code)
+					return
+				}
+			}
+			if _, ok := xType.(*types.Dict); ok {
+				keyIdx := fc.chunk.AddConstString(ex.Name)
+				fc.chunk.Emit(OpConst, keyIdx, 0)
+				fc.chunk.Emit(OpIndex, 0, 0)
+				fc.chunk.Emit(OpMakeSome, 0, 0)
+				fc.chunk.Code[jumpIfNoneIdx].A = len(fc.chunk.Code)
+				return
+			}
+		}
+
+		fc.addError(ex, "cannot resolve optional member %q", ex.Name)
+		fc.chunk.Code[jumpIfNoneIdx].A = len(fc.chunk.Code)
+
+	case *ast.OptionalCallExpr:
+		if memberCallee, ok := ex.Callee.(*ast.MemberExpr); ok {
+			fc.compileExpr(memberCallee.X)
+			jumpIfNoneIdx := fc.chunk.Emit(OpJumpIfNone, 0, 0)
+
+			tmpName := fmt.Sprintf("__opt_recv_%d", len(fc.chunk.Code))
+			tmpSlot := fc.allocLocal(tmpName, ex)
+			fc.chunk.Emit(OpStoreLocal, tmpSlot, 0)
+			fc.chunk.Emit(OpPop, 0, 0)
+
+			var xType types.Type = types.Any
+			if fc.c.bindings != nil {
+				if t, ok := fc.c.bindings.ExprTypes[memberCallee.X]; ok {
+					xType = t
+				}
+				if opt, ok := xType.(*types.Optional); ok {
+					xType = opt.Inner
+				}
+			}
+
+			tmpIdent := &ast.IdentExpr{Name: tmpName, NamePos: ex.Pos()}
+			callCallee := &ast.MemberExpr{
+				X:       tmpIdent,
+				Name:    memberCallee.Name,
+				NamePos: memberCallee.NamePos,
+			}
+			if fc.c.bindings != nil {
+				fc.c.bindings.Idents[tmpIdent] = &types.Symbol{
+					Name: tmpName,
+					Kind: types.SymVar,
+					Type: xType,
+				}
+				fc.c.bindings.ExprTypes[tmpIdent] = xType
+				if sym, ok := fc.c.bindings.Members[memberCallee]; ok {
+					fc.c.bindings.Members[callCallee] = sym
+				}
+			}
+
+			callExpr := &ast.CallExpr{
+				Callee: callCallee,
+				LParen: ex.LParen,
+				Args:   ex.Args,
+				RParen: ex.RParen,
+			}
+			fc.compileCall(callExpr)
+			fc.chunk.Emit(OpMakeSome, 0, 0)
+
+			endJumpIdx := fc.chunk.Emit(OpJump, 0, 0)
+			nonePath := len(fc.chunk.Code)
+			fc.chunk.Code[jumpIfNoneIdx].A = nonePath
+			endPos := len(fc.chunk.Code)
+			fc.chunk.Code[endJumpIdx].A = endPos
+			return
+		}
+
+		fc.compileExpr(ex.Callee)
+		jumpIfNoneIdx := fc.chunk.Emit(OpJumpIfNone, 0, 0)
+		tmpName := fmt.Sprintf("__opt_callee_%d", len(fc.chunk.Code))
+		tmpSlot := fc.allocLocal(tmpName, ex)
+		fc.chunk.Emit(OpStoreLocal, tmpSlot, 0)
+		fc.chunk.Emit(OpPop, 0, 0)
+		for _, arg := range ex.Args {
+			if namedArg, ok := arg.(*ast.NamedArg); ok {
+				fc.addError(namedArg, "named arguments are not supported in optional call-by-value")
+				fc.compileExpr(namedArg.Value)
+			} else {
+				fc.compileExpr(arg)
+			}
+		}
+		fc.chunk.Emit(OpLoadLocal, tmpSlot, 0)
+		fc.chunk.Emit(OpCallValue, len(ex.Args), 0)
+		fc.chunk.Emit(OpMakeSome, 0, 0)
+		endJumpIdx := fc.chunk.Emit(OpJump, 0, 0)
+		nonePath := len(fc.chunk.Code)
+		fc.chunk.Code[jumpIfNoneIdx].A = nonePath
+		endPos := len(fc.chunk.Code)
+		fc.chunk.Code[endJumpIdx].A = endPos
 
 	case *ast.AwaitExpr:
 		fc.compileExpr(ex.Expr)

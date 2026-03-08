@@ -69,6 +69,17 @@ var mixed | <int|string> = 1;
 `fun(T1, T2) | R` for first‑class functions. Parameter and return types are
 structural for equivalence.
 
+### Future Types (Async)
+
+The checker models async return values with `Future<T>`:
+
+- `async fun ... | T` is inserted into scope as `fun(...) | Future<T>`.
+- Inside async function bodies, `return expr;` is still checked against `T`
+  (the inner type), not `Future<T>`.
+- `await expr` requires `expr` to have type `Future<X>` and produces `X`.
+
+If `await` receives a non-future expression, checker reports an error.
+
 ### Generics
 
 The checker supports explicit generics for user-defined structs and functions:
@@ -129,9 +140,11 @@ For generics, declaration and checking include additional steps:
 - Structs require identical names (nominal).
 - Interfaces require a full method match (structural).
 
-Note: the compiler only emits `OpMakeSome` for explicit `some(...)` literals.
-Optional promotion is a type rule; there is no implicit runtime wrapping beyond
-explicit `some`.
+Note: the compiler emits `OpMakeSome` for explicit `some(...)` literals and for
+successful optional-chaining non-none paths (`?.`).
+
+Optional promotion remains a type rule; plain assignment to `T?` does not imply
+general-purpose runtime wrapping for arbitrary expressions.
 
 ## Operators
 

@@ -29,7 +29,7 @@
 4. `parseRelational` → `<`, `<=`, `>`, `>=`
 5. `parseAdditive` → `+`, `-`
 6. `parseMultiplicative` → `*`, `/`, `%`
-7. `parseUnary` → `!`, унарный `-`
+7. `parseUnary` → `!`, унарный `-`, `await`
 8. `parsePostfix` → доступ к полю, вызовы, индексация
 9. `parsePrimary` → литералы, идентификаторы, группировка
 
@@ -41,14 +41,48 @@
 - присваивания: `name = expr;`
 - expression statements
 - `if` / `else`, `while`, `for`, `for (item in list)`
-- `return`, `try` / `catch`, `throw`, `break`
+- `return`, `try` / `catch`, `throw`, `break`, `continue`
+- `switch` / `case` / `default`
+- `defer` (только call expression)
+
+## Парсинг асинхронного синтаксиса
+
+### Async-функции
+
+`parseFunDecl` принимает модификаторы в порядке:
+
+1. `pub` (опционально)
+2. `async` (опционально)
+3. `fun` (обязательно)
+
+Флаг асинхронности сохраняется в `ast.FunDecl.IsAsync`.
+
+### Await-выражения
+
+`await` разбирается в `parseUnary`, то есть имеет приоритет унарного оператора.
+
+Пример:
+
+```avenir
+await a + b
+```
+
+разбирается как:
+
+```avenir
+(await a) + b
+```
+
+Парсер строит `ast.AwaitExpr`, а проверка типов происходит в type checker-е.
 
 ## Вызовы и доступ к членам
 
 `parsePostfix` обрабатывает:
 
 - `expr.name`
+- `expr?.name`
 - `expr(args...)`
+- `expr?.(args...)`, `expr?.method(args...)`
 - `expr[index]`
 
 Именованные аргументы (`name = expr`) распознаются только в списках аргументов вызова.

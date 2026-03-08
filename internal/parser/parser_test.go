@@ -840,3 +840,92 @@ async fun main() | int {
 		t.Fatalf("expected callee 'fetch', got %q", ident.Name)
 	}
 }
+
+func TestParseOptionalChaining(t *testing.T) {
+	input := `pckg main;
+
+fun main() | void {
+	var user | any = none;
+	user?.name;
+	user?.name();
+}
+`
+
+	l := lexer.New(input)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("parser error: %s", e)
+		}
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	body := prog.Funcs[0].Body
+	firstExprStmt, ok := body.Stmts[1].(*ast.ExprStmt)
+	if !ok {
+		t.Fatalf("expected first optional chain expression statement, got %T", body.Stmts[1])
+	}
+	if _, ok := firstExprStmt.Expression.(*ast.OptionalMemberExpr); !ok {
+		t.Fatalf("expected OptionalMemberExpr, got %T", firstExprStmt.Expression)
+	}
+
+	secondExprStmt, ok := body.Stmts[2].(*ast.ExprStmt)
+	if !ok {
+		t.Fatalf("expected second optional chain expression statement, got %T", body.Stmts[2])
+	}
+	if _, ok := secondExprStmt.Expression.(*ast.OptionalCallExpr); !ok {
+		t.Fatalf("expected OptionalCallExpr, got %T", secondExprStmt.Expression)
+	}
+}
+
+func TestParseSwitchContinueAndDefer(t *testing.T) {
+	input := `pckg main;
+
+fun main() | void {
+	for (var i | int = 0; i < 3; i = i + 1) {
+		switch i {
+			case 0:
+				continue;
+			default:
+				defer print(i);
+		}
+	}
+}
+`
+
+	l := lexer.New(input)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("parser error: %s", e)
+		}
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	forStmt, ok := prog.Funcs[0].Body.Stmts[0].(*ast.ForStmt)
+	if !ok {
+		t.Fatalf("expected ForStmt, got %T", prog.Funcs[0].Body.Stmts[0])
+	}
+
+	switchStmt, ok := forStmt.Body.Stmts[0].(*ast.SwitchStmt)
+	if !ok {
+		t.Fatalf("expected SwitchStmt, got %T", forStmt.Body.Stmts[0])
+	}
+
+	if len(switchStmt.Cases) != 1 {
+		t.Fatalf("expected 1 case, got %d", len(switchStmt.Cases))
+	}
+	if len(switchStmt.Default) != 1 {
+		t.Fatalf("expected default clause with 1 statement, got %d", len(switchStmt.Default))
+	}
+
+	if _, ok := switchStmt.Cases[0].Body[0].(*ast.ContinueStmt); !ok {
+		t.Fatalf("expected ContinueStmt in case body, got %T", switchStmt.Cases[0].Body[0])
+	}
+
+	if _, ok := switchStmt.Default[0].(*ast.DeferStmt); !ok {
+		t.Fatalf("expected DeferStmt in default body, got %T", switchStmt.Default[0])
+	}
+}

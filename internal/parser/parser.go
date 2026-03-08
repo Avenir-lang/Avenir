@@ -962,6 +962,8 @@ func (p *Parser) parseStatement() ast.Stmt {
 		return p.parseWhileStmt()
 	case token.For:
 		return p.parseForStmt()
+	case token.Switch:
+		return p.parseSwitchStmt()
 	case token.Try:
 		return p.parseTryStmt()
 	case token.Throw:
@@ -970,6 +972,10 @@ func (p *Parser) parseStatement() ast.Stmt {
 		return p.parseReturnStmt()
 	case token.Break:
 		return p.parseBreakStmt()
+	case token.Continue:
+		return p.parseContinueStmt()
+	case token.Defer:
+		return p.parseDeferStmt()
 	case token.LBrace:
 		return p.parseBlock()
 	case token.Semicolon:
@@ -1312,6 +1318,110 @@ func (p *Parser) parseBreakStmt() ast.Stmt {
 	}
 }
 
+func (p *Parser) parseContinueStmt() ast.Stmt {
+	continueTok := p.cur
+	p.nextToken()
+	p.expect(token.Semicolon)
+
+	return &ast.ContinueStmt{
+		ContinuePos: continueTok.Pos,
+	}
+}
+
+func (p *Parser) parseDeferStmt() ast.Stmt {
+	deferTok := p.cur
+	p.nextToken()
+
+	callExpr := p.parseExpr()
+	p.expect(token.Semicolon)
+
+	call, ok := callExpr.(*ast.CallExpr)
+	if !ok {
+		p.errorf(deferTok.Pos, "defer expects a call expression")
+		return &ast.DeferStmt{
+			DeferPos: deferTok.Pos,
+			Call: &ast.CallExpr{
+				Callee: &ast.IdentExpr{Name: "", NamePos: deferTok.Pos},
+				LParen: deferTok.Pos,
+				Args:   nil,
+				RParen: deferTok.Pos,
+			},
+		}
+	}
+
+	return &ast.DeferStmt{
+		DeferPos: deferTok.Pos,
+		Call:     call,
+	}
+}
+
+func (p *Parser) parseSwitchStmt() ast.Stmt {
+	switchTok := p.cur
+	p.nextToken()
+
+	var switchExpr ast.Expr
+	if p.cur.Kind == token.Ident && p.peek.Kind == token.LBrace {
+		tok := p.cur
+		p.nextToken()
+		switchExpr = &ast.IdentExpr{
+			Name:    tok.Lexeme,
+			NamePos: tok.Pos,
+		}
+	} else {
+		switchExpr = p.parseExpr()
+	}
+	p.expect(token.LBrace)
+
+	switchStmt := &ast.SwitchStmt{
+		SwitchPos: switchTok.Pos,
+		Expr:      switchExpr,
+		Cases:     nil,
+		Default:   nil,
+	}
+
+	for p.cur.Kind != token.RBrace && p.cur.Kind != token.EOF {
+		switch p.cur.Kind {
+		case token.Case:
+			caseTok := p.cur
+			p.nextToken()
+			pattern := p.parseExpr()
+			p.expect(token.Colon)
+			clause := &ast.CaseClause{
+				CasePos: caseTok.Pos,
+				Pattern: pattern,
+				Body:    p.parseSwitchClauseBody(),
+			}
+			switchStmt.Cases = append(switchStmt.Cases, clause)
+
+		case token.Default:
+			if switchStmt.Default != nil {
+				p.errorf(p.cur.Pos, "duplicate default clause in switch")
+			}
+			p.nextToken()
+			p.expect(token.Colon)
+			switchStmt.Default = p.parseSwitchClauseBody()
+
+		default:
+			p.errorf(p.cur.Pos, "expected 'case' or 'default' in switch")
+			p.nextToken()
+		}
+	}
+
+	p.expect(token.RBrace)
+	return switchStmt
+}
+
+func (p *Parser) parseSwitchClauseBody() []ast.Stmt {
+	body := make([]ast.Stmt, 0)
+	for p.cur.Kind != token.Case && p.cur.Kind != token.Default && p.cur.Kind != token.RBrace && p.cur.Kind != token.EOF {
+		stmt := p.parseStatement()
+		if stmt != nil {
+			body = append(body, stmt)
+		}
+	}
+	return body
+}
+
 func (p *Parser) parseTryStmt() ast.Stmt {
 	tryTok := p.cur
 	p.nextToken()
@@ -1496,6 +1606,96 @@ func (p *Parser) parsePostfix() ast.Expr {
 				X:       expr,
 				Name:    nameTok.Lexeme,
 				NamePos: nameTok.Pos,
+			}
+		case token.QuestionDot:
+			p.nextToken()
+			if p.cur.Kind == token.Ident {
+				nameTok := p.cur
+				p.nextToken()
+				if p.cur.Kind == token.LParen {
+					lparen := p.cur
+					p.nextToken()
+					var args []ast.Expr
+					if p.cur.Kind != token.RParen {
+						for {
+							var arg ast.Expr
+							if p.cur.Kind == token.Ident && p.peek.Kind == token.Assign {
+								nameTok := p.cur
+								p.nextToken()
+								p.expect(token.Assign)
+								valueExpr := p.parseExpr()
+								arg = &ast.NamedArg{
+									Name:    nameTok.Lexeme,
+									NamePos: nameTok.Pos,
+									Value:   valueExpr,
+								}
+							} else {
+								arg = p.parseExpr()
+							}
+							args = append(args, arg)
+							if p.cur.Kind == token.Comma {
+								p.nextToken()
+								continue
+							}
+							break
+						}
+					}
+					rparen := p.expect(token.RParen)
+					expr = &ast.OptionalCallExpr{
+						Callee: &ast.MemberExpr{
+							X:       expr,
+							Name:    nameTok.Lexeme,
+							NamePos: nameTok.Pos,
+						},
+						LParen: lparen.Pos,
+						Args:   args,
+						RParen: rparen.Pos,
+					}
+				} else {
+					expr = &ast.OptionalMemberExpr{
+						X:       expr,
+						Name:    nameTok.Lexeme,
+						NamePos: nameTok.Pos,
+					}
+				}
+			} else if p.cur.Kind == token.LParen {
+				lparen := p.cur
+				p.nextToken()
+				var args []ast.Expr
+				if p.cur.Kind != token.RParen {
+					for {
+						var arg ast.Expr
+						if p.cur.Kind == token.Ident && p.peek.Kind == token.Assign {
+							nameTok := p.cur
+							p.nextToken()
+							p.expect(token.Assign)
+							valueExpr := p.parseExpr()
+							arg = &ast.NamedArg{
+								Name:    nameTok.Lexeme,
+								NamePos: nameTok.Pos,
+								Value:   valueExpr,
+							}
+						} else {
+							arg = p.parseExpr()
+						}
+						args = append(args, arg)
+						if p.cur.Kind == token.Comma {
+							p.nextToken()
+							continue
+						}
+						break
+					}
+				}
+				rparen := p.expect(token.RParen)
+				expr = &ast.OptionalCallExpr{
+					Callee: expr,
+					LParen: lparen.Pos,
+					Args:   args,
+					RParen: rparen.Pos,
+				}
+			} else {
+				p.errorf(p.cur.Pos, "expected identifier or '(' after '?.'")
+				return expr
 			}
 		case token.LParen:
 			// function call

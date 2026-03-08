@@ -32,7 +32,7 @@ Expressions are parsed by precedence‑layer functions:
 4. `parseRelational` → `<`, `<=`, `>`, `>=`
 5. `parseAdditive` → `+`, `-`
 6. `parseMultiplicative` → `*`, `/`, `%`
-7. `parseUnary` → `!`, unary `-`
+7. `parseUnary` → `!`, unary `-`, `await`
 8. `parsePostfix` → member access, calls, indexing
 9. `parsePrimary` → literals, identifiers, grouped expressions
 
@@ -51,6 +51,39 @@ Supported statements include:
 - `try` / `catch`
 - `throw`
 - `break`
+- `continue`
+- `switch` / `case` / `default`
+- `defer` (call expression only)
+
+## Async Syntax Parsing
+
+### Async Function Declarations
+
+`parseFunDecl` accepts optional modifiers in this order:
+
+1. `pub` (optional)
+2. `async` (optional)
+3. `fun` (required)
+
+The parser stores async marker in `ast.FunDecl.IsAsync`.
+
+### Await Expressions
+
+`await` is parsed in `parseUnary`, which gives it unary-operator precedence.
+
+Conceptually:
+
+```avenir
+await a + b
+```
+
+is parsed as:
+
+```avenir
+(await a) + b
+```
+
+The parser emits `ast.AwaitExpr` and leaves type validation to the type checker.
 
 ### `if` condition sugar
 
@@ -67,7 +100,9 @@ Semicolons are desugared into `&&` at parse time.
 `parsePostfix` handles:
 
 - Member access: `expr.name`
+- Optional member access: `expr?.name`
 - Calls: `expr(args...)`
+- Optional calls: `expr?.(args...)`, `expr?.method(args...)`
 - Indexing: `expr[index]`
 
 Named arguments use `name = expr` syntax. The parser only recognizes them in

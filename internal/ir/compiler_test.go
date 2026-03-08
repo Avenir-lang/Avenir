@@ -1871,6 +1871,202 @@ fun main() | int {
 	}
 }
 
+func TestCompile_ContinueInFor(t *testing.T) {
+	src := `
+pckg main;
+
+fun main() | int {
+    var sum | int = 0;
+    for (var i | int = 0; i < 5; i = i + 1) {
+        if (i % 2 == 0) {
+            continue;
+        }
+        sum = sum + i;
+    }
+    return sum;
+}
+`
+	l := lexer.New(src)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("parser error: %s", e)
+		}
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	mod, errs := ir.Compile(prog)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("compile error: %s", e)
+		}
+		t.Fatalf("expected no compile errors, got %d", len(errs))
+	}
+
+	machine := vm.NewVM(mod, runtime.DefaultEnv())
+	val, err := machine.RunMain()
+	if err != nil {
+		t.Fatalf("RunMain error: %v", err)
+	}
+
+	if val.Kind != value.KindInt || val.Int != 4 {
+		t.Fatalf("expected 4, got %v (%s)", val.Int, val.String())
+	}
+}
+
+func TestCompile_SwitchCaseSelection(t *testing.T) {
+	src := `
+pckg main;
+
+fun main() | int {
+    var v | int = 2;
+    var out | int = 0;
+    switch v {
+        case 1:
+            out = 10;
+        case 2:
+            out = 20;
+        default:
+            out = 30;
+    }
+    return out;
+}
+`
+	l := lexer.New(src)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("parser error: %s", e)
+		}
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	mod, errs := ir.Compile(prog)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("compile error: %s", e)
+		}
+		t.Fatalf("expected no compile errors, got %d", len(errs))
+	}
+
+	machine := vm.NewVM(mod, runtime.DefaultEnv())
+	val, err := machine.RunMain()
+	if err != nil {
+		t.Fatalf("RunMain error: %v", err)
+	}
+
+	if val.Kind != value.KindInt || val.Int != 20 {
+		t.Fatalf("expected 20, got %v (%s)", val.Int, val.String())
+	}
+}
+
+func TestCompile_OptionalCallShortCircuit(t *testing.T) {
+	src := `
+pckg main;
+
+struct Runner {
+    base | int
+}
+
+fun (r | Runner).inc(v | int) | int {
+    return r.base + v;
+}
+
+fun main() | int {
+    var noneRunner | Runner? = none;
+    var _ignored1 | int? = noneRunner?.inc(1 / 0);
+    if (typeOf(_ignored1) != "any?") {
+        return -1;
+    }
+
+    var someRunner | Runner? = some(Runner{base = 1});
+    var _ignored2 | int? = someRunner?.inc(41);
+    if (typeOf(_ignored2) != "int?") {
+        return -2;
+    }
+
+    return 1;
+}
+`
+	l := lexer.New(src)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("parser error: %s", e)
+		}
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	mod, errs := ir.Compile(prog)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("compile error: %s", e)
+		}
+		t.Fatalf("expected no compile errors, got %d", len(errs))
+	}
+
+	machine := vm.NewVM(mod, runtime.DefaultEnv())
+	val, err := machine.RunMain()
+	if err != nil {
+		t.Fatalf("RunMain error: %v", err)
+	}
+
+	if val.Kind != value.KindInt || val.Int != 1 {
+		t.Fatalf("expected 1, got %v (%s)", val.Int, val.String())
+	}
+}
+
+func TestCompile_DeferLIFOOnReturn(t *testing.T) {
+	src := `
+pckg main;
+
+fun emit(msg | string) | void {
+    print(msg);
+}
+
+fun main() | void {
+    defer emit("first");
+    defer emit("second");
+    print("body");
+}
+`
+	l := lexer.New(src)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("parser error: %s", e)
+		}
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	mod, errs := ir.Compile(prog)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("compile error: %s", e)
+		}
+		t.Fatalf("expected no compile errors, got %d", len(errs))
+	}
+
+	var output []string
+	env := runtime.NewEnv(&testOutputWriter{output: &output})
+	machine := vm.NewVM(mod, env)
+	_, err := machine.RunMain()
+	if err != nil {
+		t.Fatalf("RunMain error: %v", err)
+	}
+
+	if len(output) != 3 {
+		t.Fatalf("expected 3 output lines, got %d: %v", len(output), output)
+	}
+	if output[0] != "body" || output[1] != "second" || output[2] != "first" {
+		t.Fatalf("expected [body second first], got %v", output)
+	}
+}
+
 func TestCompile_StructLiteral(t *testing.T) {
 	src := `
 pckg main;

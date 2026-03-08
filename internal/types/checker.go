@@ -1206,10 +1206,18 @@ func (c *Checker) checkStmt(s ast.Stmt) {
 		c.checkFor(st)
 	case *ast.ForEachStmt:
 		c.checkForEach(st)
+	case *ast.SwitchStmt:
+		c.checkSwitch(st)
 	case *ast.ThrowStmt:
 		c.checkThrow(st)
 	case *ast.TryStmt:
 		c.checkTry(st)
+	case *ast.BreakStmt:
+		c.checkBreak(st)
+	case *ast.ContinueStmt:
+		c.checkContinue(st)
+	case *ast.DeferStmt:
+		c.checkDefer(st)
 	case *ast.ReturnStmt:
 		c.checkReturn(st)
 	case *ast.BlockStmt:
@@ -1379,7 +1387,9 @@ func (c *Checker) checkWhile(s *ast.WhileStmt) {
 	if !Equal(condType, Bool) {
 		c.addError(s.Cond.Pos(), "while condition must be bool, got %s", condType.String())
 	}
+	c.loopDepth++
 	c.checkBlock(s.Body)
+	c.loopDepth--
 }
 
 func (c *Checker) checkFor(s *ast.ForStmt) {
@@ -1454,6 +1464,47 @@ func (c *Checker) checkBreak(s *ast.BreakStmt) {
 	if c.loopDepth == 0 {
 		c.addError(s.Pos(), "'break' is only allowed inside loops")
 	}
+}
+
+func (c *Checker) checkContinue(s *ast.ContinueStmt) {
+	if c.loopDepth == 0 {
+		c.addError(s.Pos(), "'continue' is only allowed inside loops")
+	}
+}
+
+func (c *Checker) checkSwitch(s *ast.SwitchStmt) {
+	switchType := c.checkExpr(s.Expr)
+
+	for _, clause := range s.Cases {
+		patternType := c.checkExpr(clause.Pattern)
+		if !c.assignable(switchType, patternType) && !c.assignable(patternType, switchType) {
+			c.addError(clause.Pattern.Pos(), "switch case type %s is not compatible with %s", patternType.String(), switchType.String())
+		}
+
+		prevScope := c.scope
+		c.scope = NewScope(prevScope)
+		for _, st := range clause.Body {
+			c.checkStmt(st)
+		}
+		c.scope = prevScope
+	}
+
+	if s.Default != nil {
+		prevScope := c.scope
+		c.scope = NewScope(prevScope)
+		for _, st := range s.Default {
+			c.checkStmt(st)
+		}
+		c.scope = prevScope
+	}
+}
+
+func (c *Checker) checkDefer(s *ast.DeferStmt) {
+	if s.Call == nil {
+		c.addError(s.Pos(), "defer expects a call expression")
+		return
+	}
+	_ = c.checkCall(s.Call)
 }
 
 // ----- Expressions -----
@@ -1534,6 +1585,12 @@ func (c *Checker) checkExpr(e ast.Expr) Type {
 	case *ast.MemberExpr:
 		resultType = c.checkMember(ex)
 
+	case *ast.OptionalMemberExpr:
+		resultType = c.checkOptionalMember(ex)
+
+	case *ast.OptionalCallExpr:
+		resultType = c.checkOptionalCall(ex)
+
 	case *ast.AwaitExpr:
 		resultType = c.checkAwait(ex)
 
@@ -1547,6 +1604,144 @@ func (c *Checker) checkExpr(e ast.Expr) Type {
 	}
 
 	return resultType
+}
+
+func (c *Checker) unwrapOptionalForChain(t Type, pos token.Position) Type {
+	if opt, ok := t.(*Optional); ok {
+		return opt.Inner
+	}
+	if Equal(t, Any) {
+		return Any
+	}
+	c.addError(pos, "optional chaining requires optional value, got %s", t.String())
+	return t
+}
+
+func (c *Checker) resolveValueMemberType(xType Type, name string, pos token.Position, xExpr ast.Expr) Type {
+	tempMember := &ast.MemberExpr{X: xExpr, Name: name, NamePos: pos}
+	if builtinMethodType := c.checkBuiltinMethod(tempMember, xType); builtinMethodType != nil {
+		return builtinMethodType
+	}
+
+	if dictType, ok := xType.(*Dict); ok {
+		if dictType.ValueType == nil {
+			return Any
+		}
+		return dictType.ValueType
+	}
+
+	if interfaceType, ok := xType.(*Interface); ok {
+		for _, method := range interfaceType.Methods {
+			if method.Name == name {
+				return &Func{
+					ParamTypes: append([]Type{interfaceType}, method.ParamTypes...),
+					Result:     method.Return,
+				}
+			}
+		}
+		c.addError(pos, "interface %s has no method %q", interfaceType.Name, name)
+		return Invalid
+	}
+
+	structType, ok := xType.(*Struct)
+	if !ok {
+		c.addError(pos, "member access on non-struct type %s", xType.String())
+		return Invalid
+	}
+
+	for _, field := range structType.Fields {
+		if field.Name == name {
+			return field.Type
+		}
+	}
+
+	if structType.InstanceMethods != nil {
+		if method, ok := structType.InstanceMethods[name]; ok {
+			return &Func{
+				ParamTypes: method.ParamTypes,
+				Result:     method.Result,
+			}
+		}
+	}
+
+	c.addError(pos, "struct %s has no field or instance method %q", structType.Name, name)
+	return Invalid
+}
+
+func (c *Checker) checkOptionalMember(m *ast.OptionalMemberExpr) Type {
+	leftType := c.checkExpr(m.X)
+	inner := c.unwrapOptionalForChain(leftType, m.Pos())
+	memberType := c.resolveValueMemberType(inner, m.Name, m.NamePos, m.X)
+	if IsInvalid(memberType) {
+		return Invalid
+	}
+	return &Optional{Inner: memberType}
+}
+
+func (c *Checker) checkOptionalCall(call *ast.OptionalCallExpr) Type {
+	checkArgs := func(paramTypes []Type, args []ast.Expr, pos token.Position) {
+		if len(args) != len(paramTypes) {
+			c.addError(pos, "function expects %d arguments, got %d", len(paramTypes), len(args))
+		}
+		limit := len(args)
+		if len(paramTypes) < limit {
+			limit = len(paramTypes)
+		}
+		for i := 0; i < len(args); i++ {
+			argExpr := args[i]
+			if namedArg, ok := argExpr.(*ast.NamedArg); ok {
+				argExpr = namedArg.Value
+			}
+			argType := c.checkExpr(argExpr)
+			if i < limit && !c.assignable(paramTypes[i], argType) {
+				c.addError(argExpr.Pos(), "cannot use expression of type %s as argument %d of type %s",
+					argType.String(), i+1, paramTypes[i].String())
+			}
+		}
+	}
+
+	if member, ok := call.Callee.(*ast.MemberExpr); ok {
+		leftType := c.checkExpr(member.X)
+		inner := c.unwrapOptionalForChain(leftType, call.Pos())
+		memberType := c.resolveValueMemberType(inner, member.Name, member.NamePos, member.X)
+		fnType, ok := memberType.(*Func)
+		if !ok {
+			c.addError(call.Pos(), "optional call requires callable member, got %s", memberType.String())
+			for _, arg := range call.Args {
+				if namedArg, ok := arg.(*ast.NamedArg); ok {
+					_ = c.checkExpr(namedArg.Value)
+				} else {
+					_ = c.checkExpr(arg)
+				}
+			}
+			return Invalid
+		}
+
+		params := fnType.ParamTypes
+		if len(params) > 0 && c.assignable(params[0], inner) {
+			params = params[1:]
+		}
+		checkArgs(params, call.Args, call.Pos())
+		return &Optional{Inner: fnType.Result}
+	}
+
+	calleeType := c.checkExpr(call.Callee)
+	innerCallee := c.unwrapOptionalForChain(calleeType, call.Pos())
+	fnType, ok := innerCallee.(*Func)
+	if !ok {
+		c.addError(call.Pos(), "optional call requires callable value, got %s", innerCallee.String())
+		for _, arg := range call.Args {
+			if namedArg, ok := arg.(*ast.NamedArg); ok {
+				_ = c.checkExpr(namedArg.Value)
+			} else {
+				_ = c.checkExpr(arg)
+			}
+		}
+		return Invalid
+	}
+
+	checkArgs(fnType.ParamTypes, call.Args, call.Pos())
+	return &Optional{Inner: fnType.Result}
 }
 
 func (c *Checker) checkMember(m *ast.MemberExpr) Type {

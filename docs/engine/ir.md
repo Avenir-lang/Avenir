@@ -28,6 +28,7 @@ type Function struct {
     NumParams int
     Chunk     Chunk
     Upvalues  []UpvalueInfo
+    IsAsync   bool
 }
 ```
 
@@ -54,14 +55,15 @@ Key instruction categories include:
 - **Stack/locals**: `OpConst`, `OpLoadLocal`, `OpStoreLocal`, `OpPop`
 - **Arithmetic**: `OpAdd`, `OpSub`, `OpMul`, `OpDiv`, `OpMod`, `OpNegate`
 - **Comparisons**: `OpEq`, `OpNeq`, `OpLt`, `OpLte`, `OpGt`, `OpGte`
-- **Control flow**: `OpJump`, `OpJumpIfFalse`
-- **Calls**: `OpCall`, `OpCallValue`, `OpCallBuiltin`, `OpReturn`
+- **Control flow**: `OpJump`, `OpJumpIfFalse`, `OpJumpIfNone`
+- **Calls**: `OpCall`, `OpCallValue`, `OpCallBuiltin`, `OpPushDefer`, `OpReturn`
 - **Data**: `OpMakeList`, `OpMakeDict`, `OpMakeStruct`, `OpIndex`
 - **Fields**: `OpLoadField`, `OpStoreField`
 - **Strings**: `OpStringify`, `OpConcatString`
 - **Optionals**: `OpMakeSome`
 - **Exceptions**: `OpBeginTry`, `OpEndTry`, `OpThrow`
 - **Closures**: `OpClosure`, `OpLoadUpvalue`, `OpStoreUpvalue`
+- **Async**: `OpSpawn`, `OpAwait`
 
 See `internal/ir/ir.go` for the full opcode list.
 
@@ -106,6 +108,53 @@ and emits `OpMakeStruct` for that concrete struct type index.
 2. try‑block instructions
 3. `OpEndTry`
 4. handler block
+
+### Switch / Continue
+
+- `switch` lowers to equality checks (`OpEq`) plus conditional jumps
+  (`OpJumpIfFalse`) for each `case`.
+- Each matched case body ends with `OpJump` to skip the remaining clauses.
+- `continue` lowers to a jump back to the loop-specific continue target.
+
+### Optional Chaining
+
+Optional chains (`?.`) use `OpJumpIfNone`:
+
+1. Evaluate receiver/callee.
+2. `OpJumpIfNone` jumps to none-path when the value is `none`.
+3. Non-none path evaluates member/call and wraps the result via `OpMakeSome`.
+
+This keeps optional chain expression results in optional form.
+
+### Defer
+
+`defer` lowers to `OpPushDefer`:
+
+1. Evaluate and capture deferred call arguments.
+2. Evaluate deferred callee.
+3. Emit `OpPushDefer` with captured argument count.
+
+Deferred calls execute later in VM return handling (LIFO order).
+
+### Async/Await Lowering
+
+Async metadata and opcodes are emitted as follows:
+
+- `ast.FunDecl.IsAsync` is propagated to `ir.Function.IsAsync`.
+- Direct call to async function declaration lowers to `OpSpawn`.
+- `await expr` lowers to `OpAwait` after compiling `expr`.
+
+`OpSpawn` and `OpAwait` are VM-level async boundary instructions:
+
+1. `OpSpawn` consumes compiled call arguments and pushes `Future` value.
+2. `OpAwait` consumes a `Future`:
+   - ready + success: pushes resolved value
+   - ready + failure: throws/propagates error
+   - not ready: suspends current async task context
+
+In the current implementation, `OpSpawn` executes callee closure immediately and
+wraps its completion/error into a `Future`; suspension/resume behavior is driven
+by `OpAwait` + scheduler/event-loop task coordination.
 
 ## Example
 

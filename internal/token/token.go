@@ -32,6 +32,11 @@ const (
 	Catch
 	Throw
 	Break
+	Continue
+	Switch
+	Case
+	Default
+	Defer
 	True
 	False
 	None
@@ -90,6 +95,7 @@ const (
 	LBracket // [
 	RBracket // ]
 	Question // ?
+	QuestionDot
 )
 
 type Position struct {
@@ -153,6 +159,16 @@ func (k Kind) String() string {
 		return "Throw"
 	case Break:
 		return "Break"
+	case Continue:
+		return "Continue"
+	case Switch:
+		return "Switch"
+	case Case:
+		return "Case"
+	case Default:
+		return "Default"
+	case Defer:
+		return "Defer"
 	case True:
 		return "True"
 	case False:
@@ -245,6 +261,8 @@ func (k Kind) String() string {
 		return "RBracket"
 	case Question:
 		return "Question"
+	case QuestionDot:
+		return "QuestionDot"
 	case Dot:
 		return "Dot"
 	case Colon:
@@ -268,6 +286,11 @@ var keywords = map[string]Kind{
 	"catch":     Catch,
 	"throw":     Throw,
 	"break":     Break,
+	"continue":  Continue,
+	"switch":    Switch,
+	"case":      Case,
+	"default":   Default,
+	"defer":     Defer,
 	"true":      True,
 	"false":     False,
 	"none":      None,

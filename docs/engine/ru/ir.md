@@ -69,13 +69,17 @@ type Chunk struct {
 - Вызов async-функции компилируется в `OpSpawn`.
 - Выражение `await expr` компилируется в `OpAwait`.
 
-`OpSpawn` создаёт runtime `Future` + `Task` и помещает future в стек.
+`OpSpawn` и `OpAwait` — границы async на уровне VM:
 
-`OpAwait`:
+1. `OpSpawn` потребляет аргументы вызова и кладёт в стек `Future`.
+2. `OpAwait` потребляет `Future`:
+   - ready + success: кладёт результат в стек
+   - ready + error: пробрасывает/кидает ошибку
+   - not ready: приостанавливает текущий async-контекст задачи
 
-1. Если future готов — кладёт значение в стек.
-2. Если future завершился с ошибкой — пробрасывает ошибку.
-3. Если future ещё не готов — приостанавливает текущую задачу.
+В текущей реализации `OpSpawn` выполняет целевое замыкание сразу и
+оборачивает результат/ошибку в `Future`; механизм suspend/resume обеспечивается
+через `OpAwait` и runtime scheduler/event loop.
 
 ## Ссылки
 

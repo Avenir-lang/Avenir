@@ -136,6 +136,20 @@ func (r *Resolver) collectLocalsAndNestedFunctions(block *ast.BlockStmt, current
 				r.collectLocalsAndNestedFunctions(s.Body, currentFunc, parentFunc)
 			}
 
+		case *ast.SwitchStmt:
+			for _, clause := range s.Cases {
+				for _, caseStmt := range clause.Body {
+					if blockStmt, ok := caseStmt.(*ast.BlockStmt); ok {
+						r.collectLocalsAndNestedFunctions(blockStmt, currentFunc, parentFunc)
+					}
+				}
+			}
+			for _, defaultStmt := range s.Default {
+				if blockStmt, ok := defaultStmt.(*ast.BlockStmt); ok {
+					r.collectLocalsAndNestedFunctions(blockStmt, currentFunc, parentFunc)
+				}
+			}
+
 		case *ast.ForStmt:
 			if s.Body != nil {
 				r.collectLocalsAndNestedFunctions(s.Body, currentFunc, parentFunc)
@@ -221,6 +235,25 @@ func (r *Resolver) findFunctionLiteralsInExpr(node ast.Node, currentFunc *Functi
 			r.findFunctionLiteralsInExpr(n.Post, currentFunc, parentFunc)
 		}
 
+	case *ast.SwitchStmt:
+		r.findFunctionLiteralsInExpr(n.Expr, currentFunc, parentFunc)
+		for _, clause := range n.Cases {
+			if clause.Pattern != nil {
+				r.findFunctionLiteralsInExpr(clause.Pattern, currentFunc, parentFunc)
+			}
+			for _, caseStmt := range clause.Body {
+				r.findFunctionLiteralsInExpr(caseStmt, currentFunc, parentFunc)
+			}
+		}
+		for _, defaultStmt := range n.Default {
+			r.findFunctionLiteralsInExpr(defaultStmt, currentFunc, parentFunc)
+		}
+
+	case *ast.DeferStmt:
+		if n.Call != nil {
+			r.findFunctionLiteralsInExpr(n.Call, currentFunc, parentFunc)
+		}
+
 	case *ast.BinaryExpr:
 		r.findFunctionLiteralsInExpr(n.Left, currentFunc, parentFunc)
 		r.findFunctionLiteralsInExpr(n.Right, currentFunc, parentFunc)
@@ -245,6 +278,22 @@ func (r *Resolver) findFunctionLiteralsInExpr(node ast.Node, currentFunc *Functi
 	case *ast.ListLiteral:
 		for _, el := range n.Elements {
 			r.findFunctionLiteralsInExpr(el, currentFunc, parentFunc)
+		}
+
+	case *ast.MemberExpr:
+		r.findFunctionLiteralsInExpr(n.X, currentFunc, parentFunc)
+
+	case *ast.OptionalMemberExpr:
+		r.findFunctionLiteralsInExpr(n.X, currentFunc, parentFunc)
+
+	case *ast.OptionalCallExpr:
+		r.findFunctionLiteralsInExpr(n.Callee, currentFunc, parentFunc)
+		for _, arg := range n.Args {
+			if namedArg, ok := arg.(*ast.NamedArg); ok {
+				r.findFunctionLiteralsInExpr(namedArg.Value, currentFunc, parentFunc)
+			} else {
+				r.findFunctionLiteralsInExpr(arg, currentFunc, parentFunc)
+			}
 		}
 	}
 }
@@ -573,12 +622,46 @@ func (r *Resolver) findNestedFunctionLiteralsAndPropagate(node ast.Node, current
 			r.findNestedFunctionLiteralsAndPropagate(n.Body, currentFunc, parentFunc)
 		}
 
+	case *ast.SwitchStmt:
+		for _, clause := range n.Cases {
+			if clause.Pattern != nil {
+				r.findNestedFunctionLiteralsAndPropagate(clause.Pattern, currentFunc, parentFunc)
+			}
+			for _, caseStmt := range clause.Body {
+				r.findNestedFunctionLiteralsAndPropagate(caseStmt, currentFunc, parentFunc)
+			}
+		}
+		for _, defaultStmt := range n.Default {
+			r.findNestedFunctionLiteralsAndPropagate(defaultStmt, currentFunc, parentFunc)
+		}
+
 	case *ast.TryStmt:
 		if n.Body != nil {
 			r.findNestedFunctionLiteralsAndPropagate(n.Body, currentFunc, parentFunc)
 		}
 		if n.CatchBody != nil {
 			r.findNestedFunctionLiteralsAndPropagate(n.CatchBody, currentFunc, parentFunc)
+		}
+
+	case *ast.DeferStmt:
+		if n.Call != nil {
+			r.findNestedFunctionLiteralsAndPropagate(n.Call, currentFunc, parentFunc)
+		}
+
+	case *ast.MemberExpr:
+		r.findNestedFunctionLiteralsAndPropagate(n.X, currentFunc, parentFunc)
+
+	case *ast.OptionalMemberExpr:
+		r.findNestedFunctionLiteralsAndPropagate(n.X, currentFunc, parentFunc)
+
+	case *ast.OptionalCallExpr:
+		r.findNestedFunctionLiteralsAndPropagate(n.Callee, currentFunc, parentFunc)
+		for _, arg := range n.Args {
+			if namedArg, ok := arg.(*ast.NamedArg); ok {
+				r.findNestedFunctionLiteralsAndPropagate(namedArg.Value, currentFunc, parentFunc)
+			} else {
+				r.findNestedFunctionLiteralsAndPropagate(arg, currentFunc, parentFunc)
+			}
 		}
 	}
 }
@@ -645,12 +728,31 @@ func (r *Resolver) collectUsedIdentifiers(node ast.Node, used map[string]bool) {
 			r.collectUsedIdentifiers(n.Body, used)
 		}
 
+	case *ast.SwitchStmt:
+		r.collectUsedIdentifiers(n.Expr, used)
+		for _, clause := range n.Cases {
+			if clause.Pattern != nil {
+				r.collectUsedIdentifiers(clause.Pattern, used)
+			}
+			for _, caseStmt := range clause.Body {
+				r.collectUsedIdentifiers(caseStmt, used)
+			}
+		}
+		for _, defaultStmt := range n.Default {
+			r.collectUsedIdentifiers(defaultStmt, used)
+		}
+
 	case *ast.TryStmt:
 		if n.Body != nil {
 			r.collectUsedIdentifiers(n.Body, used)
 		}
 		if n.CatchBody != nil {
 			r.collectUsedIdentifiers(n.CatchBody, used)
+		}
+
+	case *ast.DeferStmt:
+		if n.Call != nil {
+			r.collectUsedIdentifiers(n.Call, used)
 		}
 
 	case *ast.ThrowStmt:
@@ -680,6 +782,22 @@ func (r *Resolver) collectUsedIdentifiers(node ast.Node, used map[string]bool) {
 	case *ast.ListLiteral:
 		for _, el := range n.Elements {
 			r.collectUsedIdentifiers(el, used)
+		}
+
+	case *ast.MemberExpr:
+		r.collectUsedIdentifiers(n.X, used)
+
+	case *ast.OptionalMemberExpr:
+		r.collectUsedIdentifiers(n.X, used)
+
+	case *ast.OptionalCallExpr:
+		r.collectUsedIdentifiers(n.Callee, used)
+		for _, arg := range n.Args {
+			if namedArg, ok := arg.(*ast.NamedArg); ok {
+				r.collectUsedIdentifiers(namedArg.Value, used)
+			} else {
+				r.collectUsedIdentifiers(arg, used)
+			}
 		}
 
 	case *ast.FuncLiteral:
@@ -779,12 +897,46 @@ func (r *Resolver) findAndProcessFunctionLiterals(node ast.Node, currentFunc *Fu
 			r.findAndProcessFunctionLiterals(n.Body, currentFunc, parentFunc)
 		}
 
+	case *ast.SwitchStmt:
+		for _, clause := range n.Cases {
+			if clause.Pattern != nil {
+				r.findAndProcessFunctionLiterals(clause.Pattern, currentFunc, parentFunc)
+			}
+			for _, caseStmt := range clause.Body {
+				r.findAndProcessFunctionLiterals(caseStmt, currentFunc, parentFunc)
+			}
+		}
+		for _, defaultStmt := range n.Default {
+			r.findAndProcessFunctionLiterals(defaultStmt, currentFunc, parentFunc)
+		}
+
 	case *ast.TryStmt:
 		if n.Body != nil {
 			r.findAndProcessFunctionLiterals(n.Body, currentFunc, parentFunc)
 		}
 		if n.CatchBody != nil {
 			r.findAndProcessFunctionLiterals(n.CatchBody, currentFunc, parentFunc)
+		}
+
+	case *ast.DeferStmt:
+		if n.Call != nil {
+			r.findAndProcessFunctionLiterals(n.Call, currentFunc, parentFunc)
+		}
+
+	case *ast.MemberExpr:
+		r.findAndProcessFunctionLiterals(n.X, currentFunc, parentFunc)
+
+	case *ast.OptionalMemberExpr:
+		r.findAndProcessFunctionLiterals(n.X, currentFunc, parentFunc)
+
+	case *ast.OptionalCallExpr:
+		r.findAndProcessFunctionLiterals(n.Callee, currentFunc, parentFunc)
+		for _, arg := range n.Args {
+			if namedArg, ok := arg.(*ast.NamedArg); ok {
+				r.findAndProcessFunctionLiterals(namedArg.Value, currentFunc, parentFunc)
+			} else {
+				r.findAndProcessFunctionLiterals(arg, currentFunc, parentFunc)
+			}
 		}
 	}
 }

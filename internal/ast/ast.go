@@ -303,6 +303,39 @@ type BreakStmt struct {
 func (s *BreakStmt) Pos() token.Position { return s.BreakPos }
 func (s *BreakStmt) stmtNode()           {}
 
+type ContinueStmt struct {
+	ContinuePos token.Position
+}
+
+func (s *ContinueStmt) Pos() token.Position { return s.ContinuePos }
+func (s *ContinueStmt) stmtNode()           {}
+
+type CaseClause struct {
+	CasePos token.Position
+	Pattern Expr
+	Body    []Stmt
+}
+
+func (c *CaseClause) Pos() token.Position { return c.CasePos }
+
+type SwitchStmt struct {
+	SwitchPos token.Position
+	Expr      Expr
+	Cases     []*CaseClause
+	Default   []Stmt
+}
+
+func (s *SwitchStmt) Pos() token.Position { return s.SwitchPos }
+func (s *SwitchStmt) stmtNode()           {}
+
+type DeferStmt struct {
+	DeferPos token.Position
+	Call     *CallExpr
+}
+
+func (s *DeferStmt) Pos() token.Position { return s.DeferPos }
+func (s *DeferStmt) stmtNode()           {}
+
 type TryStmt struct {
 	TryPos    token.Position
 	Body      *BlockStmt
@@ -526,6 +559,25 @@ type MemberExpr struct {
 
 func (e *MemberExpr) Pos() token.Position { return e.X.Pos() }
 func (e *MemberExpr) exprNode()           {}
+
+type OptionalMemberExpr struct {
+	X       Expr
+	Name    string
+	NamePos token.Position
+}
+
+func (e *OptionalMemberExpr) Pos() token.Position { return e.X.Pos() }
+func (e *OptionalMemberExpr) exprNode()           {}
+
+type OptionalCallExpr struct {
+	Callee Expr
+	LParen token.Position
+	Args   []Expr
+	RParen token.Position
+}
+
+func (e *OptionalCallExpr) Pos() token.Position { return e.Callee.Pos() }
+func (e *OptionalCallExpr) exprNode()           {}
 
 type BinaryExpr struct {
 	OpPos token.Position

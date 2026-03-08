@@ -77,22 +77,31 @@ internal interfaces used by std modules.
 
 ## Async Runtime Components
 
-The async backend uses dedicated runtime primitives:
+Async execution is backed by dedicated runtime primitives:
 
 - `Future` (`internal/runtime/future.go`)
-  - stores `Ready`, `Result`, `Err`
-  - keeps waiter tasks and wakes them on resolve/reject
-  - guarded by `sync.Mutex` for thread-safe waiter registration
+  - fields: `Ready`, `Result`, `Err`, waiter list
+  - `Resolve`/`Reject` mark completion and wake waiter tasks
+  - waiter registration is guarded by `sync.Mutex`
 - `Task` (`internal/runtime/task.go`)
-  - stores task status (`Ready`, `Running`, `Suspended`, `Done`, `Failed`)
-  - stores a step function `func() (TaskStatus, error)`
+  - fields: `ID`, `Status`, `Future`, `Scheduler`, `StepFn`
+  - statuses: `TaskReady`, `TaskRunning`, `TaskSuspended`, `TaskDone`, `TaskFailed`
 - `Scheduler` (`internal/runtime/scheduler.go`)
-  - manages ready queue and suspended task map
-  - supports deadlock detection when no ready tasks remain
-- `EventLoop` (`internal/runtime/eventloop.go`)
-  - runs tasks until completion
-  - marks panics/errors as failed futures
+  - maintains ready queue + suspended map
+  - allocates task IDs and reschedules waiters
+- `RunEventLoop` (`internal/runtime/eventloop.go`)
+  - repeatedly runs ready tasks
+  - marks failed tasks by rejecting their futures
   - reports deadlocks when only suspended tasks remain
+
+### Waiter Flow
+
+When VM executes `OpAwait` on a not-ready future (inside async task context):
+
+1. VM calls `Future.AddWaiter(task)`.
+2. Task is suspended by scheduler.
+3. On `Resolve`/`Reject`, future reschedules waiter tasks via `Scheduler.Schedule`.
+4. Event loop picks resumed tasks from ready queue.
 
 ## Exec Root and Path Resolution
 

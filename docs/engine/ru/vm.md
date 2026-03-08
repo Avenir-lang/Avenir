@@ -43,8 +43,27 @@ VM читает инструкции текущего фрейма и выпол
 Async-модель кооперативная и однопоточная.
 
 - `RunMain` проверяет `Function.IsAsync`.
-- Для async `main` создаются `Scheduler` и `EventLoop`.
-- Вызов async-функции даёт `Future`, `await` ожидает результат.
+- Для async `main` вызывается `runAsyncMain`, где создаются `Scheduler`, `Task` и `Future` главной функции.
+
+### `OpSpawn`
+
+Текущее поведение `OpSpawn`:
+
+1. Выполняет целевое замыкание сразу через `callClosure`.
+2. Создаёт `runtime.Future`.
+3. Делает `Resolve`/`Reject` этого future по результату вызова.
+4. Кладёт future в стек.
+
+### `OpAwait`
+
+`OpAwait` извлекает значение из стека и ожидает `Future`:
+
+- готовый успешный future: кладёт результат в стек
+- готовый future с ошибкой: пробрасывает ошибку
+- неготовый future:
+  - в async-контексте задачи: регистрирует waiter, сохраняет состояние VM
+    (stack/frames/handlers), помечает задачу suspended;
+  - вне async-контекста: runtime-ошибка (`future not ready in non-async context`).
 
 Если `await` встречает незавершённый `Future`, текущая задача приостанавливается,
 её состояние (стек/фреймы/handlers) сохраняется, и планировщик переключается

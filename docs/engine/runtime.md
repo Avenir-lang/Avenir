@@ -75,6 +75,34 @@ builtins for host access:
 These builtins are not part of the public language surface but are stable
 internal interfaces used by std modules.
 
+## Async Runtime Components
+
+Async execution is backed by dedicated runtime primitives:
+
+- `Future` (`internal/runtime/future.go`)
+  - fields: `Ready`, `Result`, `Err`, waiter list
+  - `Resolve`/`Reject` mark completion and wake waiter tasks
+  - waiter registration is guarded by `sync.Mutex`
+- `Task` (`internal/runtime/task.go`)
+  - fields: `ID`, `Status`, `Future`, `Scheduler`, `StepFn`
+  - statuses: `TaskReady`, `TaskRunning`, `TaskSuspended`, `TaskDone`, `TaskFailed`
+- `Scheduler` (`internal/runtime/scheduler.go`)
+  - maintains ready queue + suspended map
+  - allocates task IDs and reschedules waiters
+- `RunEventLoop` (`internal/runtime/eventloop.go`)
+  - repeatedly runs ready tasks
+  - marks failed tasks by rejecting their futures
+  - reports deadlock when only suspended tasks remain
+
+### Waiter Flow
+
+When VM executes `OpAwait` on a not-ready future (inside async task context):
+
+1. VM calls `Future.AddWaiter(task)`.
+2. Task is suspended by scheduler.
+3. On `Resolve`/`Reject`, future reschedules waiter tasks via `Scheduler.Schedule`.
+4. Event loop picks resumed tasks from ready queue.
+
 ## Exec Root and Path Resolution
 
 The runtime environment exposes `ExecRoot()` to resolve relative paths in

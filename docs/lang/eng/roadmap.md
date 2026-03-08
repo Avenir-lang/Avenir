@@ -8,9 +8,9 @@ language evolves.
 - Native backend for `avenir build -target=native` (currently unimplemented)
 - Generic type argument inference
 - Generics for built-in collections ergonomics
-- Optional chaining (`x?.field`) and related ergonomics
-- Pattern matching / match expressions
-- `continue` statement in loops
+- Advanced optional ergonomics (coalescing/operators beyond `?.`)
+- Pattern matching / match expressions (beyond `switch`)
+- Extended `defer` semantics and diagnostics
 
 ## Runtime and VM
 

@@ -32,10 +32,29 @@ Runtime импортирует пакеты builtins для автрорегис
 
 Async-backend использует отдельные примитивы:
 
-- `Future` (`internal/runtime/future.go`): хранит `Ready`, `Result`, `Err`, список waiters
-- `Task` (`internal/runtime/task.go`): статус задачи и шаг `func() (TaskStatus, error)`
-- `Scheduler` (`internal/runtime/scheduler.go`): очередь готовых задач и множество suspended
-- `EventLoop` (`internal/runtime/eventloop.go`): цикл исполнения, deadlock detection, propagation ошибок
+- `Future` (`internal/runtime/future.go`)
+  - поля: `Ready`, `Result`, `Err`, список waiters
+  - `Resolve`/`Reject` завершают future и будят ожидающие задачи
+  - регистрация waiters защищена `sync.Mutex`
+- `Task` (`internal/runtime/task.go`)
+  - поля: `ID`, `Status`, `Future`, `Scheduler`, `StepFn`
+  - статусы: `TaskReady`, `TaskRunning`, `TaskSuspended`, `TaskDone`, `TaskFailed`
+- `Scheduler` (`internal/runtime/scheduler.go`)
+  - поддерживает очередь ready-задач и map suspended-задач
+  - раздаёт ID задачам и пере-планирует waiters
+- `RunEventLoop` (`internal/runtime/eventloop.go`)
+  - выполняет задачи из ready-очереди
+  - переводит failed-задачи в rejected future
+  - сообщает о deadlock, если остались только suspended-задачи
+
+### Поток ожидания (waiter flow)
+
+Когда VM выполняет `OpAwait` для неготового future (в async-контексте):
+
+1. VM регистрирует задачу через `Future.AddWaiter(task)`.
+2. Scheduler переводит задачу в suspended.
+3. При `Resolve`/`Reject` future возвращает waiter-задачи в ready-очередь через `Scheduler.Schedule`.
+4. Event loop снова выбирает их на выполнение.
 
 ## Интеграция стандартной библиотеки
 

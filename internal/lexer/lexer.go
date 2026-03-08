@@ -169,8 +169,14 @@ func (l *Lexer) NextToken() token.Token {
 		kind = token.RBracket
 		lexeme = "]"
 	case '?':
-		kind = token.Question
-		lexeme = "?"
+		if l.peekChar() == '.' {
+			l.readChar()
+			kind = token.QuestionDot
+			lexeme = "?."
+		} else {
+			kind = token.Question
+			lexeme = "?"
+		}
 	case '+':
 		kind = token.Plus
 		lexeme = "+"
@@ -498,8 +504,8 @@ func (l *Lexer) nextTokenNormal(pos token.Position) token.Token {
 		for _, r := range lit {
 			if r == '.' || r == 'e' || r == 'E' {
 				kind = token.Float
-			break
-		}
+				break
+			}
 		}
 		return token.Token{
 			Kind:   kind,
@@ -553,8 +559,14 @@ func (l *Lexer) nextTokenNormal(pos token.Position) token.Token {
 		kind = token.RBracket
 		lexeme = "]"
 	case '?':
-		kind = token.Question
-		lexeme = "?"
+		if l.peekChar() == '.' {
+			l.readChar()
+			kind = token.QuestionDot
+			lexeme = "?."
+		} else {
+			kind = token.Question
+			lexeme = "?"
+		}
 	case '+':
 		kind = token.Plus
 		lexeme = "+"

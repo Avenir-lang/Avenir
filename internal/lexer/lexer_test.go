@@ -239,3 +239,76 @@ fun main() | void {
 		t.Fatalf("expected lexer error for unterminated string, got none")
 	}
 }
+
+func TestNextToken_NewControlFlowAndOptionalChaining(t *testing.T) {
+	input := `pckg main;
+
+fun main() | void {
+    var user | any = none;
+    user?.name;
+    switch 1 {
+        case 1:
+            continue;
+        default:
+            defer print("x");
+    }
+}
+`
+
+	tests := []struct {
+		kind token.Kind
+		lit  string
+	}{
+		{token.Pckg, "pckg"},
+		{token.Ident, "main"},
+		{token.Semicolon, ";"},
+		{token.Fun, "fun"},
+		{token.Ident, "main"},
+		{token.LParen, "("},
+		{token.RParen, ")"},
+		{token.Pipe, "|"},
+		{token.VoidType, "void"},
+		{token.LBrace, "{"},
+		{token.Var, "var"},
+		{token.Ident, "user"},
+		{token.Pipe, "|"},
+		{token.AnyType, "any"},
+		{token.Assign, "="},
+		{token.None, "none"},
+		{token.Semicolon, ";"},
+		{token.Ident, "user"},
+		{token.QuestionDot, "?."},
+		{token.Ident, "name"},
+		{token.Semicolon, ";"},
+		{token.Switch, "switch"},
+		{token.Int, "1"},
+		{token.LBrace, "{"},
+		{token.Case, "case"},
+		{token.Int, "1"},
+		{token.Colon, ":"},
+		{token.Continue, "continue"},
+		{token.Semicolon, ";"},
+		{token.Default, "default"},
+		{token.Colon, ":"},
+		{token.Defer, "defer"},
+		{token.Ident, "print"},
+		{token.LParen, "("},
+		{token.String, "x"},
+		{token.RParen, ")"},
+		{token.Semicolon, ";"},
+		{token.RBrace, "}"},
+		{token.RBrace, "}"},
+		{token.EOF, ""},
+	}
+
+	l := lexer.New(input)
+	for i, tt := range tests {
+		tok := l.NextToken()
+		if tok.Kind != tt.kind {
+			t.Fatalf("tests[%d] - kind wrong. expected=%s, got=%s (lexeme=%q)", i, tt.kind, tok.Kind, tok.Lexeme)
+		}
+		if tok.Lexeme != tt.lit {
+			t.Fatalf("tests[%d] - lexeme wrong. expected=%q, got=%q", i, tt.lit, tok.Lexeme)
+		}
+	}
+}

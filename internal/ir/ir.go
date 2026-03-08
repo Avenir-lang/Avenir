@@ -30,11 +30,13 @@ const (
 	// Thread managment
 	OpJump        // A = absolute ip
 	OpJumpIfFalse // A = absolute ip, pop cond
+	OpJumpIfNone  // A = absolute ip, peek top and jump if none
 
 	// Calls / returns
 	OpCall        // A = function index, B = number of arguments
 	OpCallValue   // A = number of arguments, callee = value on stack
 	OpCallBuiltin // A = builtin id, B = number of arguments
+	OpPushDefer   // A = number of arguments captured for deferred call
 	OpReturn      // B = 0 (without result) or 1 (with result returning)
 
 	// Built-in operations

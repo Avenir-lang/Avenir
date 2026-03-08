@@ -53,11 +53,18 @@ No. Each function name must be unique within a scope.
 
 ### Does Avenir support optional chaining?
 
-Not currently. Optional types exist, but optional chaining is not implemented.
+Yes. Optional chaining is supported for optional values:
+
+```avenir
+user?.name;
+maybeRunner?.run(42);
+maybeFn?.(arg);
+```
 
 ### Does Avenir support pattern matching?
 
-Not currently. Pattern matching is not implemented.
+A basic `switch` statement is supported with `case` and optional `default`.
+There is no fallthrough between cases.
 
 ## Type System
 
@@ -181,15 +188,24 @@ No. `break` can only be used in loops.
 
 ### Can I use `continue`?
 
-Not currently. `continue` is not implemented.
+Yes. `continue` is supported inside loops and skips to the next iteration.
 
 ### Can I use `switch` statements?
 
-Not currently. Use if-else chains instead.
+Yes. `switch` statements are supported:
+
+```avenir
+switch x {
+    case 1:
+        // ...
+    default:
+        // ...
+}
+```
 
 ### Can I use `defer`?
 
-Not currently. `defer` is not implemented.
+Yes. `defer` is supported for call expressions. Deferred calls run in LIFO order when the current function returns.
 
 ## Error Handling
 

@@ -126,6 +126,40 @@ while (true) {
 
 Break can only be used inside loops.
 
+### Continue Statements
+
+Continue statements skip the rest of the current loop iteration and proceed with
+the next one:
+
+```avenir
+for (var i | int = 0; i < 5; i = i + 1) {
+    if (i % 2 == 0) {
+        continue;
+    }
+    print(i);
+}
+```
+
+Continue can only be used inside loops.
+
+## Switch Statements
+
+Switch statements perform value-based branching with explicit `case` clauses and
+an optional `default` clause:
+
+```avenir
+switch code {
+    case 200:
+        print("ok");
+    case 404:
+        print("not found");
+    default:
+        print("other");
+}
+```
+
+Cases are matched by equality (`==`). Fallthrough is not supported.
+
 ## Exception Handling
 
 ### Try-Catch Statements
@@ -151,6 +185,23 @@ throw error("something went wrong");
 ```
 
 The expression must be of type `error`.
+
+## Deferred Calls
+
+`defer` registers a call expression to run when the current function returns.
+Deferred calls are executed in LIFO order.
+
+```avenir
+fun cleanupDemo() | void {
+    defer log("first");
+    defer log("second");
+    log("body");
+}
+```
+
+The output order is: `body`, `second`, `first`.
+
+Current limitation: only call expressions are supported in `defer`.
 
 ### Exception Propagation
 

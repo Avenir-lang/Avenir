@@ -41,8 +41,10 @@ Avenir is a statically-typed programming language designed for building reliable
 
 - **Conditionals**: `if`/`else` statements with optional chaining
 - **Loops**: `while`, C-style `for`, and `for...in` loops
+- **Switch**: Value-based `switch` with `case` and `default` (no fallthrough)
 - **Exceptions**: `try`/`catch` for error handling
-- **Break**: Early loop termination
+- **Loop control**: `break` and `continue` in loops
+- **Deferred calls**: `defer` executes call expressions on function return (LIFO)
 
 ### Module System
 

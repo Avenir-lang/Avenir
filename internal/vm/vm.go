@@ -13,10 +13,16 @@ import (
 
 // Frame represents a function call frame.
 type Frame struct {
-	Clo  *value.Closure // Current closure
-	Fn   *ir.Function
-	IP   int // Instruction pointer: index into Fn.Chunk.Code
-	Base int // Stack index where local variables start
+	Clo        *value.Closure // Current closure
+	Fn         *ir.Function
+	IP         int // Instruction pointer: index into Fn.Chunk.Code
+	Base       int // Stack index where local variables start
+	DeferStack []DeferCall
+}
+
+type DeferCall struct {
+	Callee value.Value
+	Args   []value.Value
 }
 
 type exceptionHandler struct {
@@ -548,6 +554,56 @@ func (vm *VM) callClosure(clo *value.Closure, numArgs int) (value.Value, error) 
 				shouldIncrementIP = false
 			}
 
+		case ir.OpJumpIfNone:
+			top, err := vm.peek(0)
+			if err != nil {
+				if vm.raiseError(err) {
+					skipIncrement = true
+					continue
+				}
+				return value.Value{}, err
+			}
+			if top.Kind == value.KindOptional && top.Optional != nil {
+				if !top.Optional.IsSome {
+					fr.IP = inst.A
+					shouldIncrementIP = false
+				} else {
+					vm.stack[vm.sp-1] = top.Optional.Value
+				}
+			}
+
+		case ir.OpPushDefer:
+			argCount := inst.A
+			if argCount < 0 || argCount+1 > vm.sp {
+				err := fmt.Errorf("OpPushDefer: invalid argument count %d", argCount)
+				if vm.raiseError(err) {
+					skipIncrement = true
+					continue
+				}
+				return value.Value{}, err
+			}
+			callee, err := vm.pop()
+			if err != nil {
+				if vm.raiseError(err) {
+					skipIncrement = true
+					continue
+				}
+				return value.Value{}, err
+			}
+			args := make([]value.Value, argCount)
+			for i := argCount - 1; i >= 0; i-- {
+				argVal, err := vm.pop()
+				if err != nil {
+					if vm.raiseError(err) {
+						skipIncrement = true
+						continue
+					}
+					return value.Value{}, err
+				}
+				args[i] = argVal
+			}
+			fr.DeferStack = append(fr.DeferStack, DeferCall{Callee: callee, Args: args})
+
 		// Function calls
 		case ir.OpCall:
 			// Direct call by function index - create closure with no upvalues
@@ -776,6 +832,35 @@ func (vm *VM) callClosure(clo *value.Closure, numArgs int) (value.Value, error) 
 			} else {
 				// For void, return "unit"/invalid so that call ALWAYS has one result
 				ret = value.Value{}
+			}
+
+			for i := len(f.DeferStack) - 1; i >= 0; i-- {
+				deferred := f.DeferStack[i]
+				if deferred.Callee.Kind != value.KindClosure || deferred.Callee.Closure == nil {
+					err := fmt.Errorf("defer expects callable closure, got %v", deferred.Callee.Kind)
+					if vm.raiseError(err) {
+						skipIncrement = true
+						continue
+					}
+					return value.Value{}, err
+				}
+				for _, arg := range deferred.Args {
+					vm.push(arg)
+				}
+				if _, err = vm.callClosure(deferred.Callee.Closure, len(deferred.Args)); err != nil {
+					if vm.raiseError(err) {
+						skipIncrement = true
+						continue
+					}
+					return value.Value{}, err
+				}
+				if _, err = vm.pop(); err != nil {
+					if vm.raiseError(err) {
+						skipIncrement = true
+						continue
+					}
+					return value.Value{}, err
+				}
 			}
 
 			vm.frames = vm.frames[:len(vm.frames)-1]
