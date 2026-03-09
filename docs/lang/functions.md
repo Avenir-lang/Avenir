@@ -14,6 +14,52 @@ fun name(param1 | type1, param2 | type2) | returnType {
 
 The return type is required. Use `void` if the function doesn't return a value.
 
+### Async Functions
+
+Functions can be declared as async with the `async` keyword:
+
+```avenir
+async fun fetchNumber() | int {
+    return 10;
+}
+```
+
+Calling an async function automatically spawns a concurrent task and returns a `Future<T>`. The caller can store the future or immediately `await` it.
+
+### Await Expressions
+
+Use `await` inside async functions to get the resolved value:
+
+```avenir
+async fun main() | int {
+    var a | int = await fetchNumber();
+    return a + 1;
+}
+```
+
+`await` suspends the current task until the future resolves. Other tasks may run while suspended.
+
+### Concurrent Spawn
+
+Calling multiple async functions before awaiting enables true concurrency:
+
+```avenir
+async fun compute(x | int) | int {
+    await asyncSleep(50000000);
+    return x * 2;
+}
+
+async fun main() | int {
+    var a | Future<int> = compute(10);
+    var b | Future<int> = compute(20);
+    var ra | int = await a;
+    var rb | int = await b;
+    return ra + rb;
+}
+```
+
+Both `compute` calls run concurrently. The total time is ~50ms, not ~100ms.
+
 ### Generic Functions
 
 Functions can declare type parameters after the function name:
@@ -202,3 +248,12 @@ fun main() | void {
 ```
 
 The `main` function is called automatically when the program runs.
+
+`main` can also be async:
+
+```avenir
+async fun main() | int {
+    var a | int = await fetchNumber();
+    return a;
+}
+```

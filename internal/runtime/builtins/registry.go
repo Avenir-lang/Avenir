@@ -157,7 +157,26 @@ const (
 	TimeHour
 	TimeMinute
 	TimeSecond
-	// future builtins go here
+
+	// Async builtins
+	AsyncTimeSleep
+	AsyncFSOpen
+	AsyncFSRead
+	AsyncFSWrite
+	AsyncFSClose
+	AsyncFSExists
+	AsyncFSRemove
+	AsyncFSMkdir
+	AsyncSocketConnect
+	AsyncSocketAccept
+	AsyncSocketRead
+	AsyncSocketWrite
+	AsyncSocketClose
+	AsyncHTTPRequest
+	AsyncHTTPAccept
+	AsyncHTTPRespond
+	AsyncFSReadAll
+	AsyncWithTimeout
 )
 
 // TypeKind represents a type in the builtin type system.
@@ -199,17 +218,48 @@ type Meta struct {
 	MethodName   string   // Empty for regular functions, method name for methods
 }
 
+// AsyncHandle is an opaque interface for an asynchronous operation handle.
+// The concrete type is *runtime.AsyncHandle; we use interface{} here to avoid import cycles.
+type AsyncHandle = interface{}
+
+// AsyncRunner is a function that starts an async operation and returns an AsyncHandle.
+// It is set by the runtime package at init time to avoid import cycles.
+var AsyncRunner func(fn func() (interface{}, error)) AsyncHandle
+
+// RunAsync starts an async operation using the registered AsyncRunner.
+// The function fn runs in a goroutine; its result is delivered to the returned AsyncHandle.
+func RunAsync(fn func() (interface{}, error)) AsyncHandle {
+	if AsyncRunner == nil {
+		panic("builtins.AsyncRunner not registered; runtime must call builtins.SetAsyncRunner")
+	}
+	return AsyncRunner(fn)
+}
+
 // Builtin represents a complete builtin function or method with both metadata and implementation.
 // The Call function signature uses interface{} to avoid import cycles.
 // Implementations should import the value package and cast appropriately.
 type Builtin struct {
 	Meta Meta
-	// Call executes the builtin. For methods, args[0] is the receiver.
+	// Call executes the builtin synchronously. For methods, args[0] is the receiver.
 	// For builtins that need host services, env provides IO, FS, etc.
 	// For pure builtins, env may be nil.
 	// Args and return value are []interface{} and interface{} to avoid import cycles.
 	// Implementations should cast to []value.Value and value.Value.
 	Call func(env Env, args []interface{}) (interface{}, error)
+
+	// CallAsync executes the builtin asynchronously, returning an AsyncHandle
+	// that will be resolved/rejected when the I/O completes.
+	// If non-nil, this builtin is async and the compiler should emit OpCallBuiltinAsync.
+	CallAsync func(env Env, args []interface{}) (AsyncHandle, error)
+}
+
+// IsAsyncBuiltin returns true if the given builtin ID is an async builtin.
+func IsAsyncBuiltin(id ID) bool {
+	b := LookupByID(id)
+	if b == nil {
+		return false
+	}
+	return b.CallAsync != nil
 }
 
 // registry holds all registered builtins with fast lookup indexes.

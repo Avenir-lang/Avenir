@@ -1,0 +1,23 @@
+pckg main;
+
+import std.time;
+
+async fun compute(label | string, ms | int) | string {
+    await std.time.asyncSleep(ms * 1000000);
+    return label + " done";
+}
+
+async fun main() | void {
+    var a | Future<string> = compute("task-A", 100);
+    var b | Future<string> = compute("task-B", 100);
+    var c | Future<string> = compute("task-C", 100);
+
+    var ra | string = await a;
+    var rb | string = await b;
+    var rc | string = await c;
+
+    print(ra);
+    print(rb);
+    print(rc);
+    print("All tasks completed concurrently!");
+}

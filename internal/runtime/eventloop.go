@@ -1,21 +1,22 @@
 package runtime
 
-import "fmt"
-
-// RunEventLoop runs all scheduled tasks until completion or deadlock.
+// RunEventLoop runs all scheduled tasks until completion.
+// When no ready tasks exist but suspended tasks remain (waiting for async I/O),
+// the loop blocks on the scheduler's wakeup channel until a goroutine signals
+// that a future has been resolved/rejected.
 func RunEventLoop(sched *Scheduler) error {
 	for {
-		if !sched.HasTasks() {
-			if sched.HasSuspended() {
-				return fmt.Errorf(
-					"deadlock: %d suspended tasks, no ready tasks",
-					len(sched.suspended),
-				)
+		for !sched.HasTasks() {
+			if sched.IsIdle() {
+				return nil
 			}
-			break
+			sched.WaitForWakeup()
 		}
 
 		task := sched.Next()
+		if task == nil {
+			continue
+		}
 
 		task.Status = TaskRunning
 		newStatus, err := task.StepFn()
@@ -32,6 +33,4 @@ func RunEventLoop(sched *Scheduler) error {
 			sched.Suspend(task)
 		}
 	}
-
-	return nil
 }

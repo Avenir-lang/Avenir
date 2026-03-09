@@ -2022,7 +2022,11 @@ func (fc *funcCompiler) compileCall(call *ast.CallExpr) {
 				fc.compileExpr(arg)
 			}
 
-			fc.chunk.Emit(OpCallBuiltin, int(builtin.Meta.ID), len(reorderedArgs))
+			if builtins.IsAsyncBuiltin(builtin.Meta.ID) {
+				fc.chunk.Emit(OpCallBuiltinAsync, int(builtin.Meta.ID), len(reorderedArgs))
+			} else {
+				fc.chunk.Emit(OpCallBuiltin, int(builtin.Meta.ID), len(reorderedArgs))
+			}
 			return
 		}
 	}

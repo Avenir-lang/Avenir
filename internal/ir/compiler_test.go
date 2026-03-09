@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"avenir/internal/ir"
 	"avenir/internal/lexer"
@@ -4679,5 +4680,467 @@ async fun main() | int {
 
 	if val.Kind != value.KindInt || val.Int != 20 {
 		t.Fatalf("expected 20, got %v (%s)", val.Int, val.String())
+	}
+}
+
+func TestCompile_AsyncBuiltinSleep_Basic(t *testing.T) {
+	src := `
+pckg main;
+
+async fun main() | void {
+    await __builtin_async_time_sleep(10000000);
+    print("done");
+}
+`
+	l := lexer.New(src)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("parser error: %s", e)
+		}
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	mod, errs := ir.Compile(prog)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("compile error: %s", e)
+		}
+		t.Fatalf("expected no compile errors, got %d", len(errs))
+	}
+
+	var output []string
+	env := runtime.NewEnv(&testOutputWriter{output: &output})
+	machine := vm.NewVM(mod, env)
+	_, err := machine.RunMain()
+	if err != nil {
+		t.Fatalf("RunMain error: %v", err)
+	}
+
+	if len(output) != 1 || output[0] != "done" {
+		t.Fatalf("expected [\"done\"], got %v", output)
+	}
+}
+
+func TestCompile_AsyncBuiltinSleep_Timing(t *testing.T) {
+	src := `
+pckg main;
+
+async fun main() | int {
+    var start | int = __builtin_time_now();
+    await __builtin_async_time_sleep(50000000);
+    var end | int = __builtin_time_now();
+    return end - start;
+}
+`
+	l := lexer.New(src)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("parser error: %s", e)
+		}
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	mod, errs := ir.Compile(prog)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("compile error: %s", e)
+		}
+		t.Fatalf("expected no compile errors, got %d", len(errs))
+	}
+
+	machine := vm.NewVM(mod, runtime.DefaultEnv())
+	val, err := machine.RunMain()
+	if err != nil {
+		t.Fatalf("RunMain error: %v", err)
+	}
+
+	if val.Kind != value.KindInt {
+		t.Fatalf("expected int result, got %v", val.Kind)
+	}
+
+	elapsedNanos := val.Int
+	if elapsedNanos < 40000000 {
+		t.Fatalf("sleep was too short: %d ns (expected >= 40ms)", elapsedNanos)
+	}
+}
+
+func TestCompile_AsyncBuiltinSleep_ErrorHandling(t *testing.T) {
+	src := `
+pckg main;
+
+async fun main() | string {
+    try {
+        await __builtin_async_time_sleep(-1);
+        return "no error";
+    } catch (e | error) {
+        return "caught";
+    }
+}
+`
+	l := lexer.New(src)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("parser error: %s", e)
+		}
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	mod, errs := ir.Compile(prog)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("compile error: %s", e)
+		}
+		t.Fatalf("expected no compile errors, got %d", len(errs))
+	}
+
+	machine := vm.NewVM(mod, runtime.DefaultEnv())
+	val, err := machine.RunMain()
+	if err != nil {
+		t.Fatalf("RunMain error: %v", err)
+	}
+
+	if val.Kind != value.KindString || val.Str != "caught" {
+		t.Fatalf("expected 'caught', got %v (%s)", val.Kind, val.String())
+	}
+}
+
+func TestCompile_AsyncFS_WriteRead(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "async_test.txt")
+
+	src := `
+pckg main;
+
+async fun main() | string {
+    var f | any = await __builtin_async_fs_open("` + path + `", "w");
+    await __builtin_async_fs_write(f, fromString("async hello"));
+    await __builtin_async_fs_close(f);
+
+    var r | any = await __builtin_async_fs_open("` + path + `", "r");
+    var data | bytes = await __builtin_async_fs_read(r, 1024);
+    await __builtin_async_fs_close(r);
+    return data.toString();
+}
+`
+	l := lexer.New(src)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("parser error: %s", e)
+		}
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	mod, errs := ir.Compile(prog)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("compile error: %s", e)
+		}
+		t.Fatalf("expected no compile errors, got %d", len(errs))
+	}
+
+	machine := vm.NewVM(mod, runtime.DefaultEnv())
+	val, err := machine.RunMain()
+	if err != nil {
+		t.Fatalf("RunMain error: %v", err)
+	}
+
+	if val.Kind != value.KindString || val.Str != "async hello" {
+		t.Fatalf("expected 'async hello', got %v (%s)", val.Kind, val.String())
+	}
+}
+
+func TestCompile_AsyncFS_ExistsMkdirRemove(t *testing.T) {
+	dir := t.TempDir()
+	subdir := filepath.Join(dir, "async_subdir")
+
+	src := `
+pckg main;
+
+async fun main() | string {
+    var before | bool = await __builtin_async_fs_exists("` + subdir + `");
+    await __builtin_async_fs_mkdir("` + subdir + `");
+    var after | bool = await __builtin_async_fs_exists("` + subdir + `");
+    await __builtin_async_fs_remove("` + subdir + `");
+    var final | bool = await __builtin_async_fs_exists("` + subdir + `");
+
+    if (!before && after && !final) {
+        return "ok";
+    }
+    return "fail";
+}
+`
+	l := lexer.New(src)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("parser error: %s", e)
+		}
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	mod, errs := ir.Compile(prog)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("compile error: %s", e)
+		}
+		t.Fatalf("expected no compile errors, got %d", len(errs))
+	}
+
+	machine := vm.NewVM(mod, runtime.DefaultEnv())
+	val, err := machine.RunMain()
+	if err != nil {
+		t.Fatalf("RunMain error: %v", err)
+	}
+
+	if val.Kind != value.KindString || val.Str != "ok" {
+		t.Fatalf("expected 'ok', got %v (%s)", val.Kind, val.String())
+	}
+}
+
+func TestCompile_SpawnAwait_ReturnValue(t *testing.T) {
+	src := `
+pckg main;
+
+async fun compute(x | int) | int {
+    await __builtin_async_time_sleep(1000000);
+    return x * 2;
+}
+
+async fun main() | int {
+    var f | Future<int> = compute(21);
+    var result | int = await f;
+    return result;
+}
+`
+	l := lexer.New(src)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("parser error: %s", e)
+		}
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	mod, errs := ir.Compile(prog)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("compile error: %s", e)
+		}
+		t.Fatalf("expected no compile errors, got %d", len(errs))
+	}
+
+	machine := vm.NewVM(mod, runtime.DefaultEnv())
+	val, err := machine.RunMain()
+	if err != nil {
+		t.Fatalf("RunMain error: %v", err)
+	}
+
+	if val.Kind != value.KindInt || val.Int != 42 {
+		t.Fatalf("expected 42, got %v (%s)", val.Kind, val.String())
+	}
+}
+
+func TestCompile_SpawnAwait_Interleaving(t *testing.T) {
+	src := `
+pckg main;
+
+async fun sleeper(ms | int) | int {
+    await __builtin_async_time_sleep(ms * 1000000);
+    return ms;
+}
+
+async fun main() | string {
+    var a | Future<int> = sleeper(50);
+    var b | Future<int> = sleeper(50);
+    var ra | int = await a;
+    var rb | int = await b;
+    if (ra == 50 && rb == 50) {
+        return "ok";
+    }
+    return "fail";
+}
+`
+	l := lexer.New(src)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("parser error: %s", e)
+		}
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	mod, errs := ir.Compile(prog)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("compile error: %s", e)
+		}
+		t.Fatalf("expected no compile errors, got %d", len(errs))
+	}
+
+	machine := vm.NewVM(mod, runtime.DefaultEnv())
+	start := time.Now()
+	val, err := machine.RunMain()
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("RunMain error: %v", err)
+	}
+
+	if val.Kind != value.KindString || val.Str != "ok" {
+		t.Fatalf("expected 'ok', got %v (%s)", val.Kind, val.String())
+	}
+
+	if elapsed > 150*time.Millisecond {
+		t.Fatalf("expected concurrent execution (<150ms), took %v", elapsed)
+	}
+}
+
+func TestCompile_WithTimeout_Success(t *testing.T) {
+	src := `
+pckg main;
+
+async fun compute(x | int) | int {
+    await __builtin_async_time_sleep(10000000);
+    return x * 2;
+}
+
+async fun main() | int {
+    var f | Future<int> = compute(21);
+    var result | int = await __builtin_async_with_timeout(f, 500000000);
+    return result;
+}
+`
+	l := lexer.New(src)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("parser error: %s", e)
+		}
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	mod, errs := ir.Compile(prog)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("compile error: %s", e)
+		}
+		t.Fatalf("expected no compile errors, got %d", len(errs))
+	}
+
+	machine := vm.NewVM(mod, runtime.DefaultEnv())
+	val, err := machine.RunMain()
+	if err != nil {
+		t.Fatalf("RunMain error: %v", err)
+	}
+
+	if val.Kind != value.KindInt || val.Int != 42 {
+		t.Fatalf("expected 42, got %v (%s)", val.Int, val.String())
+	}
+}
+
+func TestCompile_WithTimeout_Expired(t *testing.T) {
+	src := `
+pckg main;
+
+async fun slowTask() | int {
+    await __builtin_async_time_sleep(500000000);
+    return 99;
+}
+
+async fun main() | string {
+    var f | Future<int> = slowTask();
+    try {
+        var result | int = await __builtin_async_with_timeout(f, 10000000);
+        return "unexpected";
+    } catch (e | error) {
+        return "timeout";
+    }
+}
+`
+	l := lexer.New(src)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("parser error: %s", e)
+		}
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	mod, errs := ir.Compile(prog)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("compile error: %s", e)
+		}
+		t.Fatalf("expected no compile errors, got %d", len(errs))
+	}
+
+	machine := vm.NewVM(mod, runtime.DefaultEnv())
+	val, err := machine.RunMain()
+	if err != nil {
+		t.Fatalf("RunMain error: %v", err)
+	}
+
+	if val.Kind != value.KindString || val.Str != "timeout" {
+		t.Fatalf("expected 'timeout', got %v (%s)", val.Kind, val.String())
+	}
+}
+
+func TestCompile_SpawnAwait_ErrorPropagation(t *testing.T) {
+	src := `
+pckg main;
+
+async fun failing() | int {
+    throw error("spawn failed");
+    return 0;
+}
+
+async fun main() | string {
+    var f | Future<int> = failing();
+    try {
+        var _ | int = await f;
+        return "no error";
+    } catch (e | error) {
+        return "caught";
+    }
+}
+`
+	l := lexer.New(src)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("parser error: %s", e)
+		}
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	mod, errs := ir.Compile(prog)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("compile error: %s", e)
+		}
+		t.Fatalf("expected no compile errors, got %d", len(errs))
+	}
+
+	machine := vm.NewVM(mod, runtime.DefaultEnv())
+	val, err := machine.RunMain()
+	if err != nil {
+		t.Fatalf("RunMain error: %v", err)
+	}
+
+	if val.Kind != value.KindString || val.Str != "caught" {
+		t.Fatalf("expected 'caught', got %v (%s)", val.Kind, val.String())
 	}
 }

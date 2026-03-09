@@ -292,6 +292,9 @@ func (c *Checker) builtinFuncTypeFromMeta(meta builtins.Meta) *Func {
 		paramTypes = append(paramTypes, c.typeFromBuiltinTypeRef(p))
 	}
 	res := c.typeFromBuiltinTypeRef(meta.Result)
+	if builtins.IsAsyncBuiltin(meta.ID) {
+		res = &Future{Inner: res}
+	}
 	return &Func{
 		ParamTypes: paramTypes,
 		Result:     res,
@@ -991,6 +994,18 @@ func (c *Checker) typeOfTypeNode(tn ast.TypeNode) Type {
 // ----- Generics Instantiation -----
 
 func (c *Checker) instantiateGenericType(git *ast.GenericInstanceType) Type {
+	if git.Name == "Future" {
+		if len(git.TypeArgs) != 1 {
+			c.addError(git.Pos(), "Future expects exactly 1 type argument, got %d", len(git.TypeArgs))
+			return Invalid
+		}
+		inner := c.typeOfTypeNode(git.TypeArgs[0])
+		if IsInvalid(inner) {
+			return Invalid
+		}
+		return &Future{Inner: inner}
+	}
+
 	// Look up the generic struct by name from internal map
 	if c.genericStructs != nil {
 		if gs, ok := c.genericStructs[git.Name]; ok {

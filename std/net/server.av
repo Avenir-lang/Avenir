@@ -15,3 +15,12 @@ pub fun (s | Server).accept() | Socket {
 pub fun (s | Server).close() | void {
     __builtin_socket_close(s.handle);
 }
+
+pub async fun (s | Server).asyncAccept() | Socket {
+    var h | any = await __builtin_async_socket_accept(s.handle);
+    return Socket{handle = h};
+}
+
+pub async fun (s | Server).asyncClose() | void {
+    await __builtin_async_socket_close(s.handle);
+}

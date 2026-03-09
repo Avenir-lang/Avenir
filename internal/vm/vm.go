@@ -63,6 +63,7 @@ type VM struct {
 	scheduler   *runtime.Scheduler
 	currentTask *taskContext
 	suspended   bool
+	resuming    bool
 }
 
 func (vm *VM) throwValue(exc value.Value) bool {
@@ -179,6 +180,20 @@ func (vm *VM) RunMain() (value.Value, error) {
 	return vm.callClosure(cloVal.Closure, 0)
 }
 
+// spawnChild creates a child VM that shares the module, environment, and scheduler
+// but has its own stack and frames for concurrent task execution.
+func (vm *VM) spawnChild() *VM {
+	child := &VM{
+		mod:       vm.mod,
+		stack:     make([]value.Value, 0, 1024),
+		frames:    make([]Frame, 0, 16),
+		env:       vm.env,
+		handlers:  make([]exceptionHandler, 0, 16),
+		scheduler: vm.scheduler,
+	}
+	return child
+}
+
 // runAsyncMain runs an async main function using the scheduler and event loop.
 func (vm *VM) runAsyncMain(fn *ir.Function) (value.Value, error) {
 	sched := runtime.NewScheduler()
@@ -187,7 +202,13 @@ func (vm *VM) runAsyncMain(fn *ir.Function) (value.Value, error) {
 	mainFut := runtime.NewFuture()
 	cloVal := value.NewClosure(fn, nil)
 
-	task := sched.NewTask(mainFut, func() (status runtime.TaskStatus, retErr error) {
+	tc := &taskContext{
+		future: mainFut,
+	}
+
+	resumed := false
+	var task *runtime.Task
+	task = sched.NewTask(mainFut, func() (status runtime.TaskStatus, retErr error) {
 		defer func() {
 			if r := recover(); r != nil {
 				retErr = fmt.Errorf("panic in async task: %v", r)
@@ -195,9 +216,23 @@ func (vm *VM) runAsyncMain(fn *ir.Function) (value.Value, error) {
 			}
 		}()
 
+		tc.task = task
+		vm.currentTask = tc
+		vm.suspended = false
+
+		if resumed {
+			vm.stack = make([]value.Value, 4096)
+			copy(vm.stack, tc.stack)
+			vm.sp = tc.sp
+			vm.frames = tc.frames
+			vm.handlers = tc.handlers
+			vm.resuming = true
+		}
+
 		result, err := vm.callClosure(cloVal.Closure, 0)
 		if err != nil {
 			if errors.Is(err, errSuspended) {
+				resumed = true
 				return runtime.TaskSuspended, nil
 			}
 			return runtime.TaskFailed, err
@@ -232,40 +267,47 @@ func (vm *VM) runAsyncMain(fn *ir.Function) (value.Value, error) {
 //   - Upvalues can be "open" (pointing to stack slots) or "closed" (holding copied values)
 //   - When a function returns, open upvalues pointing into its frame are closed
 func (vm *VM) callClosure(clo *value.Closure, numArgs int) (value.Value, error) {
-	if clo == nil {
-		return value.Value{}, fmt.Errorf("callClosure: nil closure")
-	}
-	fn := clo.Fn
+	var callFrameIdx int
 
-	if numArgs != fn.NumParams {
-		return value.Value{}, fmt.Errorf("function %s expects %d args, got %d",
-			fn.Name, fn.NumParams, numArgs)
-	}
-
-	// Arguments are already on the stack
-	// base = sp - numArgs (start of this function's stack frame)
-	base := vm.sp - numArgs
-	if base < 0 {
-		return value.Value{}, errors.New("stack underflow before call")
-	}
-
-	// Allocate space for all local variables (NumLocals >= NumParams)
-	// Parameters occupy the first NumParams slots, additional locals follow
-	if fn.Chunk.NumLocals > fn.NumParams {
-		additional := fn.Chunk.NumLocals - fn.NumParams
-		for i := 0; i < additional; i++ {
-			vm.push(value.Value{}) // zero / invalid
+	if vm.resuming {
+		vm.resuming = false
+		callFrameIdx = 0
+	} else {
+		if clo == nil {
+			return value.Value{}, fmt.Errorf("callClosure: nil closure")
 		}
-	}
+		fn := clo.Fn
 
-	frame := Frame{
-		Clo:  clo,
-		Fn:   fn,
-		IP:   0,
-		Base: base,
+		if numArgs != fn.NumParams {
+			return value.Value{}, fmt.Errorf("function %s expects %d args, got %d",
+				fn.Name, fn.NumParams, numArgs)
+		}
+
+		// Arguments are already on the stack
+		// base = sp - numArgs (start of this function's stack frame)
+		base := vm.sp - numArgs
+		if base < 0 {
+			return value.Value{}, errors.New("stack underflow before call")
+		}
+
+		// Allocate space for all local variables (NumLocals >= NumParams)
+		// Parameters occupy the first NumParams slots, additional locals follow
+		if fn.Chunk.NumLocals > fn.NumParams {
+			additional := fn.Chunk.NumLocals - fn.NumParams
+			for i := 0; i < additional; i++ {
+				vm.push(value.Value{}) // zero / invalid
+			}
+		}
+
+		frame := Frame{
+			Clo:  clo,
+			Fn:   fn,
+			IP:   0,
+			Base: base,
+		}
+		vm.frames = append(vm.frames, frame)
+		callFrameIdx = len(vm.frames) - 1
 	}
-	vm.frames = append(vm.frames, frame)
-	callFrameIdx := len(vm.frames) - 1
 
 	var lastRet value.Value
 	var skipIncrement bool
@@ -1256,15 +1298,78 @@ func (vm *VM) callClosure(clo *value.Closure, numArgs int) (value.Value, error) 
 			}
 
 			fn := vm.mod.Functions[fnIdx]
-			clo := value.NewClosure(fn, nil)
 
-			result, err := vm.callClosure(clo.Closure, numArgs)
+			spawnArgs := make([]value.Value, numArgs)
+			for i := numArgs - 1; i >= 0; i-- {
+				arg, err := vm.pop()
+				if err != nil {
+					if vm.raiseError(err) {
+						skipIncrement = true
+						continue
+					}
+					return value.Value{}, err
+				}
+				spawnArgs[i] = arg
+			}
 
 			fut := runtime.NewFuture()
-			if err != nil {
-				fut.Reject(err)
+
+			if vm.scheduler != nil {
+				childVM := vm.spawnChild()
+				clo := value.NewClosure(fn, nil)
+
+				for _, arg := range spawnArgs {
+					childVM.push(arg)
+				}
+
+				childTC := &taskContext{future: fut}
+				childResumed := false
+
+				var childTask *runtime.Task
+				childTask = vm.scheduler.NewTask(fut, func() (status runtime.TaskStatus, retErr error) {
+					defer func() {
+						if r := recover(); r != nil {
+							retErr = fmt.Errorf("panic in spawned task: %v", r)
+							status = runtime.TaskFailed
+						}
+					}()
+
+					childTC.task = childTask
+					childVM.currentTask = childTC
+					childVM.suspended = false
+
+					if childResumed {
+						childVM.stack = make([]value.Value, 4096)
+						copy(childVM.stack, childTC.stack)
+						childVM.sp = childTC.sp
+						childVM.frames = childTC.frames
+						childVM.handlers = childTC.handlers
+						childVM.resuming = true
+					}
+
+					result, err := childVM.callClosure(clo.Closure, numArgs)
+					if err != nil {
+						if errors.Is(err, errSuspended) {
+							childResumed = true
+							return runtime.TaskSuspended, nil
+						}
+						return runtime.TaskFailed, err
+					}
+					fut.Resolve(result)
+					return runtime.TaskDone, nil
+				})
+				vm.scheduler.Schedule(childTask)
 			} else {
-				fut.Resolve(result)
+				clo := value.NewClosure(fn, nil)
+				for _, arg := range spawnArgs {
+					vm.push(arg)
+				}
+				result, err := vm.callClosure(clo.Closure, numArgs)
+				if err != nil {
+					fut.Reject(err)
+				} else {
+					fut.Resolve(result)
+				}
 			}
 
 			vm.push(value.FutureVal(fut))
@@ -1297,6 +1402,7 @@ func (vm *VM) callClosure(clo *value.Closure, numArgs int) (value.Value, error) 
 			}
 			if !fut.Ready {
 				if vm.currentTask != nil {
+					vm.push(val)
 					fut.AddWaiter(vm.currentTask.task)
 					vm.currentTask.stack = compactStack(vm.stack, vm.sp)
 					vm.currentTask.sp = vm.sp
@@ -1320,6 +1426,66 @@ func (vm *VM) callClosure(clo *value.Closure, numArgs int) (value.Value, error) 
 				return value.Value{}, fut.Err
 			}
 			vm.push(fut.Result)
+
+		case ir.OpCallBuiltinAsync:
+			builtinID := builtins.ID(inst.A)
+			n := inst.B
+			if n < 0 || n > vm.sp {
+				err := fmt.Errorf("OpCallBuiltinAsync: invalid arg count %d", n)
+				if vm.raiseError(err) {
+					skipIncrement = true
+					continue
+				}
+				return value.Value{}, err
+			}
+			args := make([]value.Value, n)
+			for i := n - 1; i >= 0; i-- {
+				v, err := vm.pop()
+				if err != nil {
+					if vm.raiseError(err) {
+						skipIncrement = true
+						continue
+					}
+					return value.Value{}, err
+				}
+				args[i] = v
+			}
+
+			if builtinID == builtins.AsyncWithTimeout {
+				if n != 2 {
+					err := fmt.Errorf("withTimeout expects 2 args, got %d", n)
+					if vm.raiseError(err) {
+						skipIncrement = true
+						continue
+					}
+					return value.Value{}, err
+				}
+				innerFut, ok := args[0].Future.(*runtime.Future)
+				if !ok || innerFut == nil {
+					err := fmt.Errorf("withTimeout: first arg must be a future")
+					if vm.raiseError(err) {
+						skipIncrement = true
+						continue
+					}
+					return value.Value{}, err
+				}
+				durationNs := args[1].Int
+				timeoutFut := runtime.WithTimeout(innerFut, durationNs)
+				vm.push(value.FutureVal(timeoutFut))
+				goto nextInstruction
+			}
+
+			ah, err := runtime.CallBuiltinAsync(vm.env, builtinID, args)
+			if err != nil {
+				if vm.raiseError(err) {
+					skipIncrement = true
+					continue
+				}
+				return value.Value{}, err
+			}
+			fut := runtime.NewFuture()
+			ah.WireToFuture(fut)
+			vm.push(value.FutureVal(fut))
 
 		default:
 			if vm.raiseError(fmt.Errorf("unknown opcode %d", inst.Op)) {

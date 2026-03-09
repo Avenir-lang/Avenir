@@ -38,3 +38,36 @@ pub fun (s | Socket).writeString(data | string) | int {
 pub fun (s | Socket).close() | void {
     __builtin_socket_close(s.handle);
 }
+
+pub async fun (s | Socket).asyncRead(n | int) | bytes {
+    return await __builtin_async_socket_read(s.handle, n);
+}
+
+pub async fun (s | Socket).asyncReadAll() | bytes {
+    var buf | bytes = fromString("");
+    while (true) {
+        var chunk | bytes = await s.asyncRead(1024);
+        if (len(chunk) == 0) {
+            break;
+        }
+        buf = buf.concat(chunk);
+    }
+    return buf;
+}
+
+pub async fun (s | Socket).asyncReadString() | string {
+    var data | bytes = await s.asyncReadAll();
+    return data.toString();
+}
+
+pub async fun (s | Socket).asyncWrite(data | bytes) | int {
+    return await __builtin_async_socket_write(s.handle, data);
+}
+
+pub async fun (s | Socket).asyncWriteString(data | string) | int {
+    return await s.asyncWrite(fromString(data));
+}
+
+pub async fun (s | Socket).asyncClose() | void {
+    await __builtin_async_socket_close(s.handle);
+}

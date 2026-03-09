@@ -48,3 +48,52 @@ pub fun put(url | string, body | bytes) | HttpResponse {
     };
     return request(req);
 }
+
+pub async fun asyncRequest(req | HttpRequest) | HttpResponse {
+    var raw | dict<any> = await __builtin_async_http_request(req.method, req.url, req.headers, req.body);
+    return HttpResponse{
+        status = raw["status"],
+        headers = raw["headers"],
+        body = raw["body"]
+    };
+}
+
+pub async fun asyncGet(url | string) | HttpResponse {
+    var req | HttpRequest = HttpRequest{
+        method = "GET",
+        url = url,
+        headers = {},
+        body = none
+    };
+    return await asyncRequest(req);
+}
+
+pub async fun asyncDelete(url | string) | HttpResponse {
+    var req | HttpRequest = HttpRequest{
+        method = "DELETE",
+        url = url,
+        headers = {},
+        body = none
+    };
+    return await asyncRequest(req);
+}
+
+pub async fun asyncPost(url | string, body | bytes) | HttpResponse {
+    var req | HttpRequest = HttpRequest{
+        method = "POST",
+        url = url,
+        headers = {},
+        body = some(body)
+    };
+    return await asyncRequest(req);
+}
+
+pub async fun asyncPut(url | string, body | bytes) | HttpResponse {
+    var req | HttpRequest = HttpRequest{
+        method = "PUT",
+        url = url,
+        headers = {},
+        body = some(body)
+    };
+    return await asyncRequest(req);
+}

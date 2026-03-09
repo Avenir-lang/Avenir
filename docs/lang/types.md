@@ -233,6 +233,23 @@ Use `dict.get()` when a key may be missing; it returns an optional `T?`.
 
 `dict<T>` is also a built-in parametric type (not a user-defined generic type).
 
+### Futures
+
+`Future<T>` represents a pending asynchronous result. Calling an `async fun` returns a `Future<T>`:
+
+```avenir
+async fun compute(x | int) | int {
+    return x * 2;
+}
+
+async fun main() | void {
+    var f | Future<int> = compute(21);
+    var result | int = await f;
+}
+```
+
+`Future<T>` is a built-in parametric type. Use `await` to extract the inner value.
+
 ### Structs
 
 User-defined types with named fields:

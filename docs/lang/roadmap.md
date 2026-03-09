@@ -19,7 +19,8 @@ language evolves.
 
 ## Standard Library
 
-- Async I/O primitives
+- ~~Async I/O primitives~~ (implemented: async FS, Net, HTTP, timers)
+- Task cancellation and timeouts
 - Expanded filesystem APIs (metadata, directory iteration)
 - HTTP enhancements (TLS, middleware, streaming bodies)
 - WebSocket support

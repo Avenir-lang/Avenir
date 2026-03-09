@@ -38,3 +38,36 @@ pub fun (f | File).writeString(data | string) | int {
 pub fun (f | File).close() | void {
     __builtin_fs_close(f.handle);
 }
+
+pub async fun (f | File).asyncRead(n | int) | bytes {
+    return await __builtin_async_fs_read(f.handle, n);
+}
+
+pub async fun (f | File).asyncReadAll() | bytes {
+    var buf | bytes = fromString("");
+    while (true) {
+        var chunk | bytes = await f.asyncRead(1024);
+        if (len(chunk) == 0) {
+            break;
+        }
+        buf = buf.concat(chunk);
+    }
+    return buf;
+}
+
+pub async fun (f | File).asyncReadString() | string {
+    var data | bytes = await f.asyncReadAll();
+    return data.toString();
+}
+
+pub async fun (f | File).asyncWrite(data | bytes) | int {
+    return await __builtin_async_fs_write(f.handle, data);
+}
+
+pub async fun (f | File).asyncWriteString(data | string) | int {
+    return await f.asyncWrite(fromString(data));
+}
+
+pub async fun (f | File).asyncClose() | void {
+    await __builtin_async_fs_close(f.handle);
+}

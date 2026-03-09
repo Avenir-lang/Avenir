@@ -103,6 +103,49 @@ When VM executes `OpAwait` on a not-ready future (inside async task context):
 3. On `Resolve`/`Reject`, future reschedules waiter tasks via `Scheduler.Schedule`.
 4. Event loop picks resumed tasks from ready queue.
 
+### Thread Safety
+
+`Scheduler` is protected by `sync.Mutex` since goroutines (from async I/O
+completions) call `Schedule` concurrently with the event loop reading the
+ready queue. The event loop uses `IsIdle()` for atomic empty-check to avoid
+TOCTOU races between `HasTasks`/`HasSuspended`.
+
+### OpSpawn Concurrency
+
+When the compiler encounters a call to an `async fun`, it emits `OpSpawn`
+instead of `OpCall`. The VM handles `OpSpawn` as follows:
+
+1. Pop arguments from parent stack
+2. Create a new `Future` for the spawn result
+3. Create a **child VM** via `spawnChild()` — shares `mod`, `env`, and
+   `scheduler` but has its own stack and frames
+4. Push arguments onto the child VM's stack
+5. Create a `Task` whose `StepFn` calls `childVM.callClosure`
+6. Schedule the child task on the shared scheduler
+7. Push the `Future` onto the parent stack
+
+The child task runs cooperatively with the parent and other tasks through the
+shared event loop. When the child completes, it resolves its future, waking
+any task that awaited it.
+
+### Async Builtins
+
+Async builtins are registered with a `CallAsync` field returning an
+`*AsyncHandle`. The VM uses `OpCallBuiltinAsync` to invoke them:
+
+1. Call `runtime.CallBuiltinAsync(env, id, args)` → returns `*AsyncHandle`
+2. Create a `Future` and wire it via `ah.WireToFuture(fut)`
+3. Push the future onto the stack
+
+The `AsyncHandle` runs the actual I/O in a Go goroutine. When it completes,
+the wired future is resolved/rejected, scheduling any waiting tasks.
+
+Async builtin categories:
+- **FS**: `__builtin_async_fs_open`, `_read`, `_read_all`, `_write`, `_close`, `_exists`, `_remove`, `_mkdir`
+- **Net**: `__builtin_async_socket_connect`, `_read`, `_write`, `_close`, `_accept`
+- **HTTP**: `__builtin_async_http_request`, `_accept`, `_respond`
+- **Time**: `__builtin_async_time_sleep`
+
 ## Exec Root and Path Resolution
 
 The runtime environment exposes `ExecRoot()` to resolve relative paths in

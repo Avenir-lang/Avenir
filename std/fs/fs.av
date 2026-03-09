@@ -19,3 +19,20 @@ pub fun remove(path | string) | void {
 pub fun mkdir(path | string) | void {
     __builtin_fs_mkdir(resolvePath(path));
 }
+
+pub async fun asyncOpen(path | string, mode | string) | File {
+    var h | any = await __builtin_async_fs_open(resolvePath(path), mode);
+    return File{handle = h};
+}
+
+pub async fun asyncExists(path | string) | bool {
+    return await __builtin_async_fs_exists(resolvePath(path));
+}
+
+pub async fun asyncRemove(path | string) | void {
+    await __builtin_async_fs_remove(resolvePath(path));
+}
+
+pub async fun asyncMkdir(path | string) | void {
+    await __builtin_async_fs_mkdir(resolvePath(path));
+}

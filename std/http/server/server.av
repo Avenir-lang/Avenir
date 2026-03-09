@@ -25,3 +25,17 @@ pub fun (s | HttpServer).serve(handler | fun(HttpRequest) | HttpResponse) | void
         __builtin_http_respond(raw["__handle"], resp.status, resp.headers, resp.body);
     }
 }
+
+pub async fun (s | HttpServer).asyncServe(handler | fun(HttpRequest) | HttpResponse) | void {
+    while (true) {
+        var raw | dict<any> = await __builtin_async_http_accept(s.handle);
+        var req | HttpRequest = HttpRequest{
+            method = raw["method"],
+            path = raw["path"],
+            headers = raw["headers"],
+            body = raw["body"]
+        };
+        var resp | HttpResponse = handler(req);
+        await __builtin_async_http_respond(raw["__handle"], resp.status, resp.headers, resp.body);
+    }
+}

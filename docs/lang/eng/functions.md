@@ -37,7 +37,28 @@ async fun main() | int {
 }
 ```
 
-`await` is only valid for async function results.
+`await` suspends the current task until the future resolves. Other tasks may run while suspended.
+
+### Concurrent Spawn
+
+Calling multiple async functions before awaiting enables true concurrency:
+
+```avenir
+async fun compute(x | int) | int {
+    await asyncSleep(50000000);
+    return x * 2;
+}
+
+async fun main() | int {
+    var a | Future<int> = compute(10);
+    var b | Future<int> = compute(20);
+    var ra | int = await a;
+    var rb | int = await b;
+    return ra + rb;
+}
+```
+
+Both `compute` calls run concurrently. The total time is ~50ms, not ~100ms. `Future<T>` is a built-in generic type representing a pending async result.
 
 ### Generic Functions
 

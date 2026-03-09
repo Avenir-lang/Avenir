@@ -14,3 +14,17 @@ pub fun sleep(d | Duration) | void {
     }
     __builtin_time_sleep(d.nanos);
 }
+
+pub async fun asyncSleep(d | Duration) | void {
+    if (d.nanos < 0) {
+        throw timeError("duration must be non-negative");
+    }
+    await __builtin_async_time_sleep(d.nanos);
+}
+
+pub async fun withTimeout(future | any, d | Duration) | any {
+    if (d.nanos < 0) {
+        throw timeError("timeout duration must be non-negative");
+    }
+    return await __builtin_async_with_timeout(future, d.nanos);
+}

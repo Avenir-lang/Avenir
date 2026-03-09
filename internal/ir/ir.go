@@ -61,8 +61,9 @@ const (
 	OpStoreUpvalue // A = upvalue index
 
 	// Async
-	OpSpawn // A = function index, B = number of arguments; create task + future, schedule, push future
-	OpAwait // pop future; if ready push result; else suspend current task
+	OpSpawn            // A = function index, B = number of arguments; create task + future, schedule, push future
+	OpAwait            // pop future; if ready push result; else suspend current task
+	OpCallBuiltinAsync // A = builtin id, B = number of arguments; call async builtin, create future, push future
 )
 
 // Instruction is one bytecode instruction
