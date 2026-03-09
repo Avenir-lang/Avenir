@@ -95,6 +95,109 @@ fun print_hello() | void {
 }
 ```
 
+## Decorators
+
+Decorators allow wrapping functions with additional behavior using the `@` syntax:
+
+```avenir
+@log
+fun add(a | int, b | int) | int {
+    return a + b;
+}
+```
+
+A decorator is a function that takes a function as its argument and returns a function of the same type. The above is equivalent to `add = log(add)`.
+
+### Decorator Requirements
+
+The decorator function must:
+- Accept exactly one parameter: the function being decorated
+- Return a function with the same signature as the decorated function
+
+```avenir
+fun doubler(f | fun(int, int) | int) | fun(int, int) | int {
+    return fun(a | int, b | int) | int {
+        return f(a, b) * 2;
+    };
+}
+
+@doubler
+fun add(a | int, b | int) | int {
+    return a + b;
+}
+
+// add(3, 4) now returns 14 instead of 7
+```
+
+### Parameterized Decorators
+
+Decorators can take arguments using parentheses. A parameterized decorator is a function that returns a decorator:
+
+```avenir
+@cache(60)
+fun compute(x | int) | int {
+    return x * x;
+}
+```
+
+Here `cache(60)` is called first, and the returned function is used as the decorator.
+
+### Multiple Decorators
+
+Multiple decorators can be stacked. They are applied bottom-up (innermost first):
+
+```avenir
+@dec1
+@dec2
+fun f(x | int) | int {
+    return x;
+}
+// Equivalent to: f = dec1(dec2(f))
+```
+
+### Generic Decorators
+
+Decorators can be generic functions using variadic type parameters for universal applicability:
+
+```avenir
+fun wrap<R, ...Args>(f | fun(Args...) | R) | fun(Args...) | R {
+    return f;
+}
+```
+
+When applied to a function, the type arguments are inferred automatically from the decorated function's signature.
+
+## Variadic Generics
+
+Variadic type parameters allow functions to accept a variable number of type arguments.
+
+### Variadic Type Parameters
+
+Declare a variadic type parameter with `...` before the name:
+
+```avenir
+fun wrap<R, ...Args>(f | fun(Args...) | R) | fun(Args...) | R {
+    return f;
+}
+```
+
+- `...Args` declares `Args` as a variadic type parameter (a type pack)
+- `Args...` expands the type pack in type position
+
+### Type Pack Expansion
+
+Use `Name...` in type positions to expand a type pack:
+
+```avenir
+fun(Args...) | R    // function taking the expanded types and returning R
+```
+
+When `wrap` is applied to a `fun(int, string) | bool`, the type checker infers:
+- `R = bool`
+- `Args = (int, string)`
+
+And `fun(Args...) | R` expands to `fun(int, string) | bool`.
+
 ## Public Functions
 
 Functions can be marked as public using the `pub` keyword:

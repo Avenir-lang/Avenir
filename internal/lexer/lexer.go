@@ -136,11 +136,21 @@ func (l *Lexer) NextToken() token.Token {
 		kind = token.Comma
 		lexeme = ","
 	case '.':
-		kind = token.Dot
-		lexeme = "."
+		if l.peekChar() == '.' && l.peekCharN(2) == '.' {
+			l.readChar()
+			l.readChar()
+			kind = token.Ellipsis
+			lexeme = "..."
+		} else {
+			kind = token.Dot
+			lexeme = "."
+		}
 	case ':':
 		kind = token.Colon
 		lexeme = ":"
+	case '@':
+		kind = token.At
+		lexeme = "@"
 	case '|':
 		if l.peekChar() == '|' {
 			l.readChar()
@@ -275,6 +285,14 @@ func (l *Lexer) peekChar() rune {
 		return 0
 	}
 	return l.input[l.pos]
+}
+
+func (l *Lexer) peekCharN(offset int) rune {
+	idx := l.pos + offset - 1
+	if idx >= len(l.input) {
+		return 0
+	}
+	return l.input[idx]
 }
 
 func (l *Lexer) skipWhitespaceAndComments() {
@@ -526,11 +544,21 @@ func (l *Lexer) nextTokenNormal(pos token.Position) token.Token {
 		kind = token.Comma
 		lexeme = ","
 	case '.':
-		kind = token.Dot
-		lexeme = "."
+		if l.peekChar() == '.' && l.peekCharN(2) == '.' {
+			l.readChar()
+			l.readChar()
+			kind = token.Ellipsis
+			lexeme = "..."
+		} else {
+			kind = token.Dot
+			lexeme = "."
+		}
 	case ':':
 		kind = token.Colon
 		lexeme = ":"
+	case '@':
+		kind = token.At
+		lexeme = "@"
 	case '|':
 		if l.peekChar() == '|' {
 			l.readChar()

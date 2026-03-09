@@ -160,15 +160,48 @@ Builtins are registered via `builtins.Meta` and injected into scope as regular
 functions (`ReceiverType == TypeVoid`). Builtin methods are resolved at member
 access time based on the receiver’s type.
 
+## Decorators
+
+The checker validates decorators on function declarations via `checkDecorators`:
+
+1. Look up the decorator name in scope.
+2. If the decorator is a `*Func`, verify it accepts exactly one function parameter
+   matching the decorated function's type and returns the same function type.
+3. If the decorator is a `*GenericFunc`, infer type arguments from the decorated
+   function's signature via `inferDecoratorTypeArgs`, then instantiate and verify.
+4. For parameterized decorators (`@name(args)`), type-check the arguments against
+   the factory function's parameter types, then verify the returned decorator.
+
+Resolved decorator info is stored in `Bindings.Decorators` as `[]*DecoratorInfo`,
+keyed by `*ast.FunDecl`. Each `DecoratorInfo` contains the resolved function name
+(possibly monomorphized), the function type, and any decorator arguments.
+
+The IR compiler uses this to emit wrapper trampolines: the original function body
+is copied to a `$body` function, and the original slot is rewritten to call the
+decorator with a closure of `$body`, then forward arguments to the wrapped result.
+
+## Variadic Generics (TypePack)
+
+The type system supports variadic type parameters via `TypePack`:
+
+- `TypePack` holds a `[]Type` representing a pack of concrete types.
+- `SubstituteType` expands `TypePack` in `Func` parameter lists: if a substituted
+  parameter type is a `TypePack`, its types are spliced into the parameter list.
+- `MonomorphKey` flattens `TypePack` entries into the key string.
+- `typeOfTypeNode` handles `*ast.TypePackExpansion` by returning a `TypeVar` that
+  will be expanded during substitution.
+
 ## Bindings Output
 
-`Bindings` includes expression/member resolution and generic instantiation data:
+`Bindings` includes expression/member resolution, generic instantiation, and decorator data:
 
 - `Idents`, `Members`, `ExprTypes`
 - `MonomorphizedStructs` (`monoName -> *types.Struct`)
 - `MonomorphizedFuncs` (`monoName -> *ast.FunDecl`)
+- `Decorators` (`*ast.FunDecl -> []*DecoratorInfo`)
 
-The IR compiler uses monomorphized maps to collect concrete generic instances.
+The IR compiler uses monomorphized maps to collect concrete generic instances and
+decorator maps to emit wrapper trampolines.
 
 ## Errors
 

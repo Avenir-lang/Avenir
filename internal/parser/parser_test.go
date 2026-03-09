@@ -929,3 +929,144 @@ fun main() | void {
 		t.Fatalf("expected DeferStmt in default body, got %T", switchStmt.Default[0])
 	}
 }
+
+func TestParseDecorator(t *testing.T) {
+	input := `pckg main;
+
+fun log(f | fun(int, int) | int) | fun(int, int) | int {
+	return f;
+}
+
+@log
+fun add(a | int, b | int) | int {
+	return a + b;
+}
+
+fun main() | int {
+	return add(1, 2);
+}
+`
+
+	l := lexer.New(input)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("parser error: %s", e)
+		}
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	if len(prog.Funcs) != 3 {
+		t.Fatalf("expected 3 functions, got %d", len(prog.Funcs))
+	}
+
+	addFn := prog.Funcs[1]
+	if addFn.Name != "add" {
+		t.Fatalf("expected function 'add', got %q", addFn.Name)
+	}
+	if len(addFn.Decorators) != 1 {
+		t.Fatalf("expected 1 decorator, got %d", len(addFn.Decorators))
+	}
+	if addFn.Decorators[0].Name != "log" {
+		t.Fatalf("expected decorator 'log', got %q", addFn.Decorators[0].Name)
+	}
+	if len(addFn.Decorators[0].Args) != 0 {
+		t.Fatalf("expected 0 decorator args, got %d", len(addFn.Decorators[0].Args))
+	}
+}
+
+func TestParseDecoratorWithArgs(t *testing.T) {
+	input := `pckg main;
+
+@cache(60)
+fun compute(x | int) | int {
+	return x * x;
+}
+
+fun cache(ttl | int) | fun(fun(int) | int) | fun(int) | int {
+	return fun(f | fun(int) | int) | fun(int) | int { return f; };
+}
+
+fun main() | int {
+	return compute(5);
+}
+`
+
+	l := lexer.New(input)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("parser error: %s", e)
+		}
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	computeFn := prog.Funcs[0]
+	if computeFn.Name != "compute" {
+		t.Fatalf("expected function 'compute', got %q", computeFn.Name)
+	}
+	if len(computeFn.Decorators) != 1 {
+		t.Fatalf("expected 1 decorator, got %d", len(computeFn.Decorators))
+	}
+	dec := computeFn.Decorators[0]
+	if dec.Name != "cache" {
+		t.Fatalf("expected decorator 'cache', got %q", dec.Name)
+	}
+	if len(dec.Args) != 1 {
+		t.Fatalf("expected 1 decorator arg, got %d", len(dec.Args))
+	}
+}
+
+func TestParseVariadicTypeParam(t *testing.T) {
+	input := `pckg main;
+
+fun wrap<R, ...Args>(f | fun(Args...) | R) | fun(Args...) | R {
+	return f;
+}
+
+fun main() | void {
+}
+`
+
+	l := lexer.New(input)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("parser error: %s", e)
+		}
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	wrapFn := prog.Funcs[0]
+	if wrapFn.Name != "wrap" {
+		t.Fatalf("expected function 'wrap', got %q", wrapFn.Name)
+	}
+	if len(wrapFn.TypeParams) != 2 {
+		t.Fatalf("expected 2 type params, got %d", len(wrapFn.TypeParams))
+	}
+	if wrapFn.TypeParams[0].Name != "R" || wrapFn.TypeParams[0].IsVariadic {
+		t.Fatalf("expected first type param 'R' non-variadic, got %q variadic=%v", wrapFn.TypeParams[0].Name, wrapFn.TypeParams[0].IsVariadic)
+	}
+	if wrapFn.TypeParams[1].Name != "Args" || !wrapFn.TypeParams[1].IsVariadic {
+		t.Fatalf("expected second type param 'Args' variadic, got %q variadic=%v", wrapFn.TypeParams[1].Name, wrapFn.TypeParams[1].IsVariadic)
+	}
+
+	paramType := wrapFn.Params[0].Type
+	funcType, ok := paramType.(*ast.FuncType)
+	if !ok {
+		t.Fatalf("expected FuncType for param, got %T", paramType)
+	}
+	if len(funcType.ParamTypes) != 1 {
+		t.Fatalf("expected 1 param type in FuncType, got %d", len(funcType.ParamTypes))
+	}
+	expansion, ok := funcType.ParamTypes[0].(*ast.TypePackExpansion)
+	if !ok {
+		t.Fatalf("expected TypePackExpansion, got %T", funcType.ParamTypes[0])
+	}
+	if expansion.Name != "Args" {
+		t.Fatalf("expected expansion name 'Args', got %q", expansion.Name)
+	}
+}

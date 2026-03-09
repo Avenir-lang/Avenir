@@ -58,13 +58,22 @@ type World struct {
 //   - Idents: all ast.IdentExpr resolved to some symbol in scope
 //   - Members: all ast.MemberExpr that refer to module members (e.g. math.pow)
 //   - ExprTypes: expression -> its type (for struct field access and other uses)
+//
+// DecoratorInfo holds resolved decorator information for the IR compiler.
+type DecoratorInfo struct {
+	Name     string     // resolved function name (possibly monomorphized)
+	FuncType *Func      // type of the decorator function
+	Args     []ast.Expr // decorator arguments (nil for simple decorators like @log)
+}
+
 type Bindings struct {
 	Idents    map[*ast.IdentExpr]*Symbol
 	Members   map[*ast.MemberExpr]*Symbol
 	ExprTypes map[ast.Expr]Type
 
-	MonomorphizedStructs map[string]*Struct      // monoName -> instantiated struct type
-	MonomorphizedFuncs   map[string]*ast.FunDecl // monoName -> synthetic FunDecl
+	MonomorphizedStructs map[string]*Struct                // monoName -> instantiated struct type
+	MonomorphizedFuncs   map[string]*ast.FunDecl           // monoName -> synthetic FunDecl
+	Decorators           map[*ast.FunDecl][]*DecoratorInfo // decorated func -> resolved decorators
 }
 
 func NewBindings() *Bindings {
@@ -74,6 +83,7 @@ func NewBindings() *Bindings {
 		ExprTypes:            make(map[ast.Expr]Type),
 		MonomorphizedStructs: make(map[string]*Struct),
 		MonomorphizedFuncs:   make(map[string]*ast.FunDecl),
+		Decorators:           make(map[*ast.FunDecl][]*DecoratorInfo),
 	}
 }
 
@@ -803,6 +813,247 @@ func (c *Checker) checkFunc(fn *ast.FunDecl) {
 
 	// Body
 	c.checkBlock(fn.Body)
+
+	// Decorators
+	c.checkDecorators(fn, fnType)
+}
+
+func (c *Checker) checkDecorators(fn *ast.FunDecl, fnType *Func) {
+	if len(fn.Decorators) == 0 {
+		return
+	}
+
+	var infos []*DecoratorInfo
+	for _, dec := range fn.Decorators {
+		info := c.checkDecorator(dec, fnType, fn)
+		if info != nil {
+			infos = append(infos, info)
+		}
+	}
+
+	if c.bindings != nil && len(infos) > 0 {
+		c.bindings.Decorators[fn] = infos
+	}
+}
+
+func (c *Checker) checkDecorator(dec *ast.Decorator, fnType *Func, fn *ast.FunDecl) *DecoratorInfo {
+	sym := c.scope.Lookup(dec.Name)
+	if sym == nil {
+		c.addError(dec.AtPos, "undefined decorator %q", dec.Name)
+		return nil
+	}
+
+	if len(dec.Args) > 0 {
+		return c.checkParameterizedDecorator(dec, sym, fnType, fn)
+	}
+
+	return c.checkSimpleDecorator(dec, sym, fnType, fn)
+}
+
+func (c *Checker) checkSimpleDecorator(dec *ast.Decorator, sym *Symbol, fnType *Func, fn *ast.FunDecl) *DecoratorInfo {
+	switch decType := sym.Type.(type) {
+	case *Func:
+		if len(decType.ParamTypes) != 1 {
+			c.addError(dec.AtPos, "decorator %q must accept exactly 1 argument (the function), got %d", dec.Name, len(decType.ParamTypes))
+			return nil
+		}
+		paramFn, ok := decType.ParamTypes[0].(*Func)
+		if !ok {
+			c.addError(dec.AtPos, "decorator %q parameter must be a function type, got %s", dec.Name, decType.ParamTypes[0].String())
+			return nil
+		}
+		if !Equal(paramFn, fnType) {
+			c.addError(dec.AtPos, "decorator %q expects function of type %s, but decorated function has type %s", dec.Name, paramFn.String(), fnType.String())
+			return nil
+		}
+		retFn, ok := decType.Result.(*Func)
+		if !ok {
+			c.addError(dec.AtPos, "decorator %q must return a function type, got %s", dec.Name, decType.Result.String())
+			return nil
+		}
+		if !Equal(retFn, fnType) {
+			c.addError(dec.AtPos, "decorator %q returns function of type %s, but decorated function has type %s", dec.Name, retFn.String(), fnType.String())
+			return nil
+		}
+		return &DecoratorInfo{
+			Name:     dec.Name,
+			FuncType: decType,
+		}
+
+	case *GenericFunc:
+		return c.checkGenericDecorator(dec, decType, fnType, fn)
+
+	default:
+		c.addError(dec.AtPos, "decorator %q is not a function, got %s", dec.Name, sym.Type.String())
+		return nil
+	}
+}
+
+func (c *Checker) checkParameterizedDecorator(dec *ast.Decorator, sym *Symbol, fnType *Func, fn *ast.FunDecl) *DecoratorInfo {
+	for _, arg := range dec.Args {
+		_ = c.checkExpr(arg)
+	}
+
+	switch decType := sym.Type.(type) {
+	case *Func:
+		if len(decType.ParamTypes) != len(dec.Args) {
+			c.addError(dec.AtPos, "decorator factory %q expects %d arguments, got %d", dec.Name, len(decType.ParamTypes), len(dec.Args))
+			return nil
+		}
+		for i, arg := range dec.Args {
+			argType := c.checkExpr(arg)
+			if !c.assignable(decType.ParamTypes[i], argType) {
+				c.addError(arg.Pos(), "decorator factory %q argument %d: cannot use %s as %s",
+					dec.Name, i+1, argType.String(), decType.ParamTypes[i].String())
+			}
+		}
+		innerFn, ok := decType.Result.(*Func)
+		if !ok {
+			c.addError(dec.AtPos, "decorator factory %q must return a decorator function, got %s", dec.Name, decType.Result.String())
+			return nil
+		}
+		if len(innerFn.ParamTypes) != 1 {
+			c.addError(dec.AtPos, "decorator returned by %q must accept exactly 1 argument (the function)", dec.Name)
+			return nil
+		}
+		paramFn, ok := innerFn.ParamTypes[0].(*Func)
+		if !ok {
+			c.addError(dec.AtPos, "decorator returned by %q must accept a function parameter", dec.Name)
+			return nil
+		}
+		if !Equal(paramFn, fnType) {
+			c.addError(dec.AtPos, "decorator returned by %q expects function of type %s, but decorated function has type %s",
+				dec.Name, paramFn.String(), fnType.String())
+			return nil
+		}
+		return &DecoratorInfo{
+			Name:     dec.Name,
+			FuncType: decType,
+			Args:     dec.Args,
+		}
+
+	case *GenericFunc:
+		c.addError(dec.AtPos, "parameterized generic decorator %q is not yet supported", dec.Name)
+		return nil
+
+	default:
+		c.addError(dec.AtPos, "decorator %q is not a function, got %s", dec.Name, sym.Type.String())
+		return nil
+	}
+}
+
+func (c *Checker) checkGenericDecorator(dec *ast.Decorator, gf *GenericFunc, fnType *Func, fn *ast.FunDecl) *DecoratorInfo {
+	typeArgs := c.inferDecoratorTypeArgs(gf, fnType, dec)
+	if typeArgs == nil {
+		return nil
+	}
+
+	instantiated, monoName := c.instantiateGenericFunc(gf, typeArgs)
+	if instantiated == nil {
+		return nil
+	}
+
+	if len(instantiated.ParamTypes) != 1 {
+		c.addError(dec.AtPos, "instantiated decorator %q must accept exactly 1 argument, got %d", dec.Name, len(instantiated.ParamTypes))
+		return nil
+	}
+	paramFn, ok := instantiated.ParamTypes[0].(*Func)
+	if !ok {
+		c.addError(dec.AtPos, "instantiated decorator %q parameter must be a function type", dec.Name)
+		return nil
+	}
+	if !Equal(paramFn, fnType) {
+		c.addError(dec.AtPos, "instantiated decorator %q expects %s, decorated function is %s",
+			dec.Name, paramFn.String(), fnType.String())
+		return nil
+	}
+	retFn, ok := instantiated.Result.(*Func)
+	if !ok {
+		c.addError(dec.AtPos, "instantiated decorator %q must return a function type", dec.Name)
+		return nil
+	}
+	if !Equal(retFn, fnType) {
+		c.addError(dec.AtPos, "instantiated decorator %q returns %s, but decorated function is %s",
+			dec.Name, retFn.String(), fnType.String())
+		return nil
+	}
+
+	return &DecoratorInfo{
+		Name:     monoName,
+		FuncType: instantiated,
+	}
+}
+
+func (c *Checker) inferDecoratorTypeArgs(gf *GenericFunc, fnType *Func, dec *ast.Decorator) []Type {
+	decl := gf.Decl
+	if len(decl.Params) != 1 {
+		c.addError(dec.AtPos, "generic decorator %q must have exactly 1 parameter", dec.Name)
+		return nil
+	}
+
+	paramTypeNode := decl.Params[0].Type
+	funcTypeNode, ok := paramTypeNode.(*ast.FuncType)
+	if !ok {
+		c.addError(dec.AtPos, "generic decorator %q parameter must be a function type", dec.Name)
+		return nil
+	}
+
+	typeArgs := make([]Type, len(gf.TypeParams))
+	matched := make([]bool, len(gf.TypeParams))
+
+	paramIndex := func(name string) int {
+		for i, tp := range gf.TypeParams {
+			if tp == name {
+				return i
+			}
+		}
+		return -1
+	}
+
+	resultTypeNode := funcTypeNode.Result
+	if simple, ok := resultTypeNode.(*ast.SimpleType); ok {
+		idx := paramIndex(simple.Name)
+		if idx >= 0 {
+			typeArgs[idx] = fnType.Result
+			matched[idx] = true
+		}
+	}
+
+	concreteParamIdx := 0
+	for _, ptNode := range funcTypeNode.ParamTypes {
+		switch pt := ptNode.(type) {
+		case *ast.TypePackExpansion:
+			idx := paramIndex(pt.Name)
+			if idx >= 0 {
+				remaining := fnType.ParamTypes[concreteParamIdx:]
+				pack := &TypePack{Types: make([]Type, len(remaining))}
+				copy(pack.Types, remaining)
+				typeArgs[idx] = pack
+				matched[idx] = true
+				concreteParamIdx = len(fnType.ParamTypes)
+			}
+		case *ast.SimpleType:
+			idx := paramIndex(pt.Name)
+			if idx >= 0 && concreteParamIdx < len(fnType.ParamTypes) {
+				typeArgs[idx] = fnType.ParamTypes[concreteParamIdx]
+				matched[idx] = true
+				concreteParamIdx++
+			} else {
+				concreteParamIdx++
+			}
+		default:
+			concreteParamIdx++
+		}
+	}
+
+	for i, m := range matched {
+		if !m {
+			c.addError(dec.AtPos, "cannot infer type argument %q for generic decorator %q", gf.TypeParams[i], dec.Name)
+			return nil
+		}
+	}
+
+	return typeArgs
 }
 
 func (c *Checker) checkFuncLiteral(lit *ast.FuncLiteral) Type {
@@ -983,6 +1234,14 @@ func (c *Checker) typeOfTypeNode(tn ast.TypeNode) Type {
 
 	case *ast.GenericInstanceType:
 		return c.instantiateGenericType(t)
+
+	case *ast.TypePackExpansion:
+		if c.typeParamScope != nil {
+			if concrete, ok := c.typeParamScope[t.Name]; ok {
+				return concrete
+			}
+		}
+		return &TypeVar{Name: t.Name}
 
 	default:
 		// Safety check
@@ -1608,6 +1867,15 @@ func (c *Checker) checkExpr(e ast.Expr) Type {
 
 	case *ast.AwaitExpr:
 		resultType = c.checkAwait(ex)
+
+	case *ast.ValuePackExpansion:
+		sym := c.scope.Lookup(ex.Name)
+		if sym == nil {
+			c.addError(ex.Pos(), "undefined identifier %q", ex.Name)
+			resultType = Invalid
+		} else {
+			resultType = sym.Type
+		}
 
 	default:
 		resultType = Invalid

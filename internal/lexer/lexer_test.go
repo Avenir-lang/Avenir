@@ -312,3 +312,31 @@ fun main() | void {
 		}
 	}
 }
+
+func TestNextToken_AtAndEllipsis(t *testing.T) {
+	input := `@log ...Args Args...`
+
+	tests := []struct {
+		kind token.Kind
+		lit  string
+	}{
+		{token.At, "@"},
+		{token.Ident, "log"},
+		{token.Ellipsis, "..."},
+		{token.Ident, "Args"},
+		{token.Ident, "Args"},
+		{token.Ellipsis, "..."},
+		{token.EOF, ""},
+	}
+
+	l := lexer.New(input)
+	for i, tt := range tests {
+		tok := l.NextToken()
+		if tok.Kind != tt.kind {
+			t.Fatalf("tests[%d] - kind wrong. expected=%s, got=%s (lexeme=%q)", i, tt.kind, tok.Kind, tok.Lexeme)
+		}
+		if tok.Lexeme != tt.lit {
+			t.Fatalf("tests[%d] - lexeme wrong. expected=%q, got=%q", i, tt.lit, tok.Lexeme)
+		}
+	}
+}

@@ -360,6 +360,40 @@ func (tv *TypeVar) equal(other Type) bool {
 	return tv.Name == o.Name
 }
 
+// TypePack represents an expanded variadic type pack: a list of concrete types
+// resulting from matching ...Args against actual function parameter types.
+type TypePack struct {
+	Types []Type
+}
+
+func (tp *TypePack) String() string {
+	s := "pack("
+	for i, t := range tp.Types {
+		if i > 0 {
+			s += ", "
+		}
+		s += t.String()
+	}
+	s += ")"
+	return s
+}
+
+func (tp *TypePack) equal(other Type) bool {
+	o, ok := other.(*TypePack)
+	if !ok {
+		return false
+	}
+	if len(tp.Types) != len(o.Types) {
+		return false
+	}
+	for i, t := range tp.Types {
+		if !t.equal(o.Types[i]) {
+			return false
+		}
+	}
+	return true
+}
+
 // GenericStruct holds the uninstantiated generic struct definition.
 type GenericStruct struct {
 	Decl       *ast.StructDecl
@@ -409,10 +443,21 @@ func SubstituteType(t Type, mapping map[string]Type) Type {
 			return t
 		}
 		return &Dict{ValueType: SubstituteType(ty.ValueType, mapping)}
+	case *TypePack:
+		expanded := make([]Type, len(ty.Types))
+		for i, t := range ty.Types {
+			expanded[i] = SubstituteType(t, mapping)
+		}
+		return &TypePack{Types: expanded}
 	case *Func:
-		params := make([]Type, len(ty.ParamTypes))
-		for i, pt := range ty.ParamTypes {
-			params[i] = SubstituteType(pt, mapping)
+		var params []Type
+		for _, pt := range ty.ParamTypes {
+			subbed := SubstituteType(pt, mapping)
+			if pack, ok := subbed.(*TypePack); ok {
+				params = append(params, pack.Types...)
+			} else {
+				params = append(params, subbed)
+			}
 		}
 		var res Type
 		if ty.Result != nil {
@@ -439,7 +484,16 @@ func MonomorphKey(baseName string, typeArgs []Type) string {
 		if i > 0 {
 			key += ","
 		}
-		key += ta.String()
+		if pack, ok := ta.(*TypePack); ok {
+			for j, pt := range pack.Types {
+				if j > 0 {
+					key += ","
+				}
+				key += pt.String()
+			}
+		} else {
+			key += ta.String()
+		}
 	}
 	return key
 }

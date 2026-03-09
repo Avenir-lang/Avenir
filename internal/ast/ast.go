@@ -58,25 +58,49 @@ type ImportDecl struct {
 
 func (d *ImportDecl) Pos() token.Position { return d.ImportPos }
 
+// Decorator represents a decorator annotation on a function declaration.
+type Decorator struct {
+	AtPos   token.Position
+	Name    string
+	NamePos token.Position
+	Args    []Expr         // nil for simple decorators like @log
+	LParen  token.Position // zero if no args
+	RParen  token.Position // zero if no args
+}
+
+func (d *Decorator) Pos() token.Position { return d.AtPos }
+
 // FunDecl / Param
 
 type TypeParam struct {
-	Name    string
-	NamePos token.Position
+	Name       string
+	NamePos    token.Position
+	IsVariadic bool // true for variadic type pack: ...Args
 }
 
 func (tp *TypeParam) Pos() token.Position { return tp.NamePos }
 
+// VariadicParam represents a variadic value parameter: args... | Args...
+type VariadicParam struct {
+	Name    string
+	NamePos token.Position
+	Type    TypeNode // TypePackExpansion node
+}
+
+func (vp *VariadicParam) Pos() token.Position { return vp.NamePos }
+
 type FunDecl struct {
-	Name       string
-	NamePos    token.Position
-	TypeParams []*TypeParam // generic type parameters, e.g. <T, U>
-	Receiver   *Receiver    // nil for regular functions, non-nil for methods
-	Params     []*Param
-	Return     TypeNode
-	Body       *BlockStmt
-	IsPublic   bool // true if declared with "pub fun"
-	IsAsync    bool // true if declared with "async fun"
+	Decorators    []*Decorator // decorator annotations, e.g. @log, @cache(60)
+	Name          string
+	NamePos       token.Position
+	TypeParams    []*TypeParam // generic type parameters, e.g. <T, U>
+	Receiver      *Receiver    // nil for regular functions, non-nil for methods
+	Params        []*Param
+	VariadicParam *VariadicParam // nil or variadic param (args... | Args...)
+	Return        TypeNode
+	Body          *BlockStmt
+	IsPublic      bool // true if declared with "pub fun"
+	IsAsync       bool // true if declared with "async fun"
 }
 
 // ReceiverKind distinguishes between instance and static methods.
@@ -220,6 +244,15 @@ type GenericInstanceType struct {
 
 func (t *GenericInstanceType) Pos() token.Position { return t.NamePos }
 func (t *GenericInstanceType) typeNode()           {}
+
+// TypePackExpansion represents a variadic type pack expansion in type position: Args...
+type TypePackExpansion struct {
+	Name    string
+	NamePos token.Position
+}
+
+func (t *TypePackExpansion) Pos() token.Position { return t.NamePos }
+func (t *TypePackExpansion) typeNode()           {}
 
 // ---------- Statements ----------
 
@@ -521,10 +554,11 @@ type FieldInit struct {
 func (f *FieldInit) Pos() token.Position { return f.NamePos }
 
 type FuncLiteral struct {
-	FunPos token.Position
-	Params []*Param
-	Return TypeNode
-	Body   *BlockStmt
+	FunPos        token.Position
+	Params        []*Param
+	VariadicParam *VariadicParam // nil or variadic param (args... | Args...)
+	Return        TypeNode
+	Body          *BlockStmt
 }
 
 func (e *FuncLiteral) Pos() token.Position { return e.FunPos }
@@ -614,3 +648,12 @@ type AwaitExpr struct {
 
 func (e *AwaitExpr) Pos() token.Position { return e.AwaitPos }
 func (e *AwaitExpr) exprNode()           {}
+
+// ValuePackExpansion represents a variadic value pack expansion in expression position: args...
+type ValuePackExpansion struct {
+	Name    string
+	NamePos token.Position
+}
+
+func (e *ValuePackExpansion) Pos() token.Position { return e.NamePos }
+func (e *ValuePackExpansion) exprNode()           {}

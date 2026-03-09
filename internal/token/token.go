@@ -96,6 +96,8 @@ const (
 	RBracket // ]
 	Question // ?
 	QuestionDot
+	At       // @
+	Ellipsis // ...
 )
 
 type Position struct {
@@ -263,6 +265,10 @@ func (k Kind) String() string {
 		return "Question"
 	case QuestionDot:
 		return "QuestionDot"
+	case At:
+		return "At"
+	case Ellipsis:
+		return "Ellipsis"
 	case Dot:
 		return "Dot"
 	case Colon:

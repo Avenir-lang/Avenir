@@ -77,8 +77,16 @@ func (p *Parser) ParseProgram() *ast.Program {
 
 	// functions (zero or more)
 	for p.cur.Kind != token.EOF {
+		var decorators []*ast.Decorator
+		if p.cur.Kind == token.At {
+			decorators = p.parseDecorators()
+		}
+
 		if p.cur.Kind == token.Fun || p.cur.Kind == token.Pub || p.cur.Kind == token.Async {
 			if p.cur.Kind == token.Pub && (p.peek.Kind == token.Struct || p.peek.Kind == token.Mut || p.peek.Kind == token.Interface) {
+				if len(decorators) > 0 {
+					p.errorf(decorators[0].AtPos, "decorators are not allowed on struct or interface declarations")
+				}
 				// pub struct, pub mut struct, or pub interface declaration
 				isPublic := true
 				p.nextToken() // consume pub
@@ -101,10 +109,14 @@ func (p *Parser) ParseProgram() *ast.Program {
 			} else {
 				fn := p.parseFunDecl()
 				if fn != nil {
+					fn.Decorators = decorators
 					prog.Funcs = append(prog.Funcs, fn)
 				}
 			}
 		} else if p.cur.Kind == token.Mut && p.peek.Kind == token.Struct {
+			if len(decorators) > 0 {
+				p.errorf(decorators[0].AtPos, "decorators are not allowed on struct declarations")
+			}
 			// mut struct declaration
 			p.nextToken() // consume mut
 			structDecl := p.parseStructDecl(false, true)
@@ -112,22 +124,79 @@ func (p *Parser) ParseProgram() *ast.Program {
 				prog.Structs = append(prog.Structs, structDecl)
 			}
 		} else if p.cur.Kind == token.Struct {
+			if len(decorators) > 0 {
+				p.errorf(decorators[0].AtPos, "decorators are not allowed on struct declarations")
+			}
 			structDecl := p.parseStructDecl(false, false)
 			if structDecl != nil {
 				prog.Structs = append(prog.Structs, structDecl)
 			}
 		} else if p.cur.Kind == token.Interface {
+			if len(decorators) > 0 {
+				p.errorf(decorators[0].AtPos, "decorators are not allowed on interface declarations")
+			}
 			interfaceDecl := p.parseInterfaceDecl(false)
 			if interfaceDecl != nil {
 				prog.Interfaces = append(prog.Interfaces, interfaceDecl)
 			}
 		} else {
+			if len(decorators) > 0 {
+				p.errorf(decorators[0].AtPos, "decorator must be followed by a function declaration")
+			}
 			p.errorf(p.cur.Pos, "unexpected token at top level: %s", p.cur.Kind)
 			p.nextToken()
 		}
 	}
 
 	return prog
+}
+
+func (p *Parser) parseDecorators() []*ast.Decorator {
+	var decorators []*ast.Decorator
+	for p.cur.Kind == token.At {
+		dec := p.parseDecorator()
+		if dec != nil {
+			decorators = append(decorators, dec)
+		}
+	}
+	return decorators
+}
+
+func (p *Parser) parseDecorator() *ast.Decorator {
+	atPos := p.cur.Pos
+	p.nextToken() // consume '@'
+
+	if p.cur.Kind != token.Ident {
+		p.errorf(p.cur.Pos, "expected decorator name after '@'")
+		return nil
+	}
+
+	dec := &ast.Decorator{
+		AtPos:   atPos,
+		Name:    p.cur.Lexeme,
+		NamePos: p.cur.Pos,
+	}
+	p.nextToken() // consume name
+
+	if p.cur.Kind == token.LParen {
+		dec.LParen = p.cur.Pos
+		p.nextToken() // consume '('
+		if p.cur.Kind != token.RParen {
+			for {
+				arg := p.parseExpr()
+				dec.Args = append(dec.Args, arg)
+				if p.cur.Kind == token.Comma {
+					p.nextToken()
+					continue
+				}
+				break
+			}
+		}
+		dec.RParen = p.cur.Pos
+		p.expect(token.RParen)
+	}
+
+	return dec
 }
 
 func (p *Parser) parseTypeParams() []*ast.TypeParam {
@@ -138,13 +207,24 @@ func (p *Parser) parseTypeParams() []*ast.TypeParam {
 
 	var params []*ast.TypeParam
 	for {
+		isVariadic := false
+		var namePos token.Position
+		if p.cur.Kind == token.Ellipsis {
+			isVariadic = true
+			namePos = p.cur.Pos
+			p.nextToken() // consume '...'
+		}
 		if p.cur.Kind != token.Ident {
 			p.errorf(p.cur.Pos, "expected type parameter name")
 			break
 		}
+		if !isVariadic {
+			namePos = p.cur.Pos
+		}
 		params = append(params, &ast.TypeParam{
-			Name:    p.cur.Lexeme,
-			NamePos: p.cur.Pos,
+			Name:       p.cur.Lexeme,
+			NamePos:    namePos,
+			IsVariadic: isVariadic,
 		})
 		p.nextToken()
 		if p.cur.Kind == token.Comma {
@@ -540,6 +620,7 @@ func (p *Parser) parseFunDecl() *ast.FunDecl {
 	p.expect(token.LParen)
 
 	var params []*ast.Param
+	var variadicParam *ast.VariadicParam
 	if p.cur.Kind != token.RParen {
 		for {
 			if p.cur.Kind != token.Ident {
@@ -548,6 +629,18 @@ func (p *Parser) parseFunDecl() *ast.FunDecl {
 			}
 			paramNameTok := p.cur
 			p.nextToken()
+
+			if p.cur.Kind == token.Ellipsis {
+				p.nextToken() // consume '...'
+				p.expect(token.Pipe)
+				paramType := p.parseType()
+				variadicParam = &ast.VariadicParam{
+					Name:    paramNameTok.Lexeme,
+					NamePos: paramNameTok.Pos,
+					Type:    paramType,
+				}
+				break
+			}
 
 			p.expect(token.Pipe)
 			paramType := p.parseType()
@@ -582,15 +675,16 @@ func (p *Parser) parseFunDecl() *ast.FunDecl {
 	body := p.parseBlock()
 
 	return &ast.FunDecl{
-		Name:       nameTok.Lexeme,
-		NamePos:    funTok.Pos,
-		TypeParams: typeParams,
-		Receiver:   receiver,
-		Params:     params,
-		Return:     retType,
-		Body:       body,
-		IsPublic:   isPublic,
-		IsAsync:    isAsync,
+		Name:          nameTok.Lexeme,
+		NamePos:       funTok.Pos,
+		TypeParams:    typeParams,
+		Receiver:      receiver,
+		Params:        params,
+		VariadicParam: variadicParam,
+		Return:        retType,
+		Body:          body,
+		IsPublic:      isPublic,
+		IsAsync:       isAsync,
 	}
 }
 
@@ -601,6 +695,7 @@ func (p *Parser) parseFuncLiteral() ast.Expr {
 	p.expect(token.LParen)
 
 	var params []*ast.Param
+	var variadicParam *ast.VariadicParam
 	if p.cur.Kind != token.RParen {
 		for {
 			if p.cur.Kind != token.Ident {
@@ -609,6 +704,18 @@ func (p *Parser) parseFuncLiteral() ast.Expr {
 			}
 			paramNameTok := p.cur
 			p.nextToken()
+
+			if p.cur.Kind == token.Ellipsis {
+				p.nextToken() // consume '...'
+				p.expect(token.Pipe)
+				paramType := p.parseType()
+				variadicParam = &ast.VariadicParam{
+					Name:    paramNameTok.Lexeme,
+					NamePos: paramNameTok.Pos,
+					Type:    paramType,
+				}
+				break
+			}
 
 			p.expect(token.Pipe)
 			paramType := p.parseType()
@@ -643,10 +750,11 @@ func (p *Parser) parseFuncLiteral() ast.Expr {
 	body := p.parseBlock()
 
 	return &ast.FuncLiteral{
-		FunPos: funTok.Pos,
-		Params: params,
-		Return: res,
-		Body:   body,
+		FunPos:        funTok.Pos,
+		Params:        params,
+		VariadicParam: variadicParam,
+		Return:        res,
+		Body:          body,
 	}
 }
 
@@ -846,6 +954,15 @@ func (p *Parser) parseType() ast.TypeNode {
 		return funcType
 
 	case token.Ident:
+		if p.peek.Kind == token.Ellipsis {
+			nameTok := p.cur
+			p.nextToken() // consume ident
+			p.nextToken() // consume '...'
+			return &ast.TypePackExpansion{
+				Name:    nameTok.Lexeme,
+				NamePos: nameTok.Pos,
+			}
+		}
 		typ := p.parseQualifiedType()
 		if p.cur.Kind == token.Question {
 			qPos := p.cur.Pos
@@ -1784,7 +1901,7 @@ func (p *Parser) isGenericStart() bool {
 		case token.Ident, token.IntType, token.FloatType, token.StringType,
 			token.BoolType, token.VoidType, token.AnyType, token.ErrorType,
 			token.BytesType, token.ListType, token.DictType,
-			token.Comma, token.Pipe, token.Question, token.Fun:
+			token.Comma, token.Pipe, token.Question, token.Fun, token.Ellipsis:
 			// valid in type argument context
 		case token.EOF:
 			p.pending = append(ahead, p.pending...)
@@ -1922,6 +2039,15 @@ func (p *Parser) parsePrimary() ast.Expr {
 		}
 		if p.peek.Kind == token.Lt && p.isGenericStart() {
 			return p.parseGenericExpr()
+		}
+		if p.peek.Kind == token.Ellipsis {
+			tok := p.cur
+			p.nextToken() // consume ident
+			p.nextToken() // consume '...'
+			return &ast.ValuePackExpansion{
+				Name:    tok.Lexeme,
+				NamePos: tok.Pos,
+			}
 		}
 		// Otherwise it's just an identifier
 		tok := p.cur

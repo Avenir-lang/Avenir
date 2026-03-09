@@ -5097,6 +5097,55 @@ async fun main() | string {
 	}
 }
 
+func TestCompile_SimpleDecorator(t *testing.T) {
+	src := `
+pckg main;
+
+fun doubler(f | fun(int, int) | int) | fun(int, int) | int {
+	return fun(a | int, b | int) | int {
+		return f(a, b) * 2;
+	};
+}
+
+@doubler
+fun add(a | int, b | int) | int {
+	return a + b;
+}
+
+fun main() | int {
+	return add(3, 4);
+}
+`
+	l := lexer.New(src)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("parser error: %s", e)
+		}
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	mod, errs := ir.Compile(prog)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("compile error: %s", e)
+		}
+		t.Fatalf("expected no compile errors, got %d", len(errs))
+	}
+
+	machine := vm.NewVM(mod, runtime.DefaultEnv())
+	val, err := machine.RunMain()
+	if err != nil {
+		t.Fatalf("RunMain error: %v", err)
+	}
+
+	// add(3, 4) = 7, doubler wraps it so result = 7 * 2 = 14
+	if val.Kind != value.KindInt || val.Int != 14 {
+		t.Fatalf("expected 14, got %v (%s)", val.Int, val.String())
+	}
+}
+
 func TestCompile_SpawnAwait_ErrorPropagation(t *testing.T) {
 	src := `
 pckg main;
