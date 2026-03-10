@@ -142,6 +142,63 @@ fun compute(x | int) | int {
 
 Here `cache(60)` is called first, and the returned function is used as the decorator.
 
+### Decorators and Methods
+
+Decorators work with both instance methods and static methods:
+
+```avenir
+// Instance method with decorator
+@log
+fun (self | Point).move(dx | int, dy | int) | void {
+    self.x = self.x + dx;
+    self.y = self.y + dy;
+}
+
+// Static method with decorator
+@validate
+fun Point.origin() | Point {
+    return Point{x = 0, y = 0};
+}
+```
+
+### Static Methods as Decorators
+
+Static methods can be used as decorators since they are statically accessible:
+
+```avenir
+struct Logger {
+    fun log(f | fun() | void) | fun() | void {
+        return fun() | void {
+            print("Starting function");
+            f();
+            print("Function completed");
+        };
+    }
+    
+    fun validate(f | fun(int) | int) | fun(int) | int {
+        return fun(x | int) | int {
+            if x < 0 {
+                print("Warning: negative input");
+            }
+            return f(x);
+        };
+    }
+}
+
+// Using static methods as decorators
+@Logger.log
+fun test() | void {
+    print("Hello, World!");
+}
+
+@Logger.validate
+fun process(x | int) | int {
+    return x * 2;
+}
+```
+
+**Note:** Only static methods can be used as decorators. Instance methods cannot be decorators because they require a specific instance, which is not available at compile time.
+
 ### Multiple Decorators
 
 Multiple decorators can be stacked. They are applied bottom-up (innermost first):
