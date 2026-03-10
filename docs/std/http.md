@@ -43,6 +43,16 @@ pub struct HttpResponse {
 | `put` | `url | string`, `body | bytes` | `HttpResponse` | network/protocol errors |
 | `delete` | `url | string` | `HttpResponse` | network/protocol errors |
 
+### Async Functions
+
+| Function | Parameters | Returns | Errors |
+| --- | --- | --- | --- |
+| `asyncRequest` | `req | HttpRequest` | `HttpResponse` | network/protocol errors |
+| `asyncGet` | `url | string` | `HttpResponse` | network/protocol errors |
+| `asyncPost` | `url | string`, `body | bytes` | `HttpResponse` | network/protocol errors |
+| `asyncPut` | `url | string`, `body | bytes` | `HttpResponse` | network/protocol errors |
+| `asyncDelete` | `url | string` | `HttpResponse` | network/protocol errors |
+
 ### Response Helpers
 
 | Method | Parameters | Returns | Errors |
@@ -79,6 +89,7 @@ pub struct HttpResponse {
 | --- | --- | --- | --- |
 | `listen` | `host | string`, `port | int` | `HttpServer` | bind errors |
 | `serve` | `handler | fun(HttpRequest) | HttpResponse` | `void` | accept/handler errors |
+| `asyncServe` | `handler | fun(HttpRequest) | HttpResponse` | `void` | accept/handler errors |
 
 ### Convenience Responses
 
@@ -119,10 +130,13 @@ Client and server modules include simple error helpers:
 All parsing, network, and protocol errors surface as runtime errors and can be
 caught with `try / catch`.
 
-## Blocking Behavior
+## Blocking and non-blocking behavior
 
-`serve()` is blocking and handles one request per accept. This is intentionally
-minimal; higher-level concurrency patterns can be built in Avenir.
+- `request`, `get`, `post`, `put`, `delete`, and `serve` are blocking calls.
+- `asyncRequest`, `asyncGet`, `asyncPost`, `asyncPut`, `asyncDelete`, and
+  `asyncServe` are non-blocking from the caller task perspective (suspend via `await`).
+- `asyncServe` accepts/responds using async HTTP builtins and can interleave with
+  other async tasks on the scheduler.
 
 ## Imports
 
@@ -136,5 +150,5 @@ import std.http.server as http;
 
 ## Future Notes
 
-This layout leaves room for middleware, async I/O, HTTPS, and WebSocket support
-without changing the core API shape.
+This layout leaves room for middleware, HTTPS, and WebSocket support without
+changing the core API shape.

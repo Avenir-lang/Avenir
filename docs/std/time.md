@@ -27,6 +27,8 @@ pub struct DateTime {
 | --- | --- | --- | --- |
 | `now` | — | `DateTime` | — |
 | `sleep` | `d | Duration` | `void` | negative duration |
+| `asyncSleep` | `d | Duration` | `void` | negative duration |
+| `withTimeout` | `future | any`, `d | Duration` | `any` | negative duration, timeout |
 | `parseDateTime` | `text | string`, `format | string` | `DateTime` | parse errors |
 | `parseDuration` | `text | string` | `Duration` | parse errors |
 | `formatDateTime` | `dt | DateTime`, `format | string` | `string` | format errors |
@@ -129,6 +131,33 @@ fun main() | void {
     print("awake");
 }
 ```
+
+### Async sleep and timeout
+
+```avenir
+import std.time;
+
+async fun work() | int {
+    await time.asyncSleep(time.fromMillis(20));
+    return 42;
+}
+
+async fun main() | void {
+    var f | Future<int> = work();
+    try {
+        var result | int = await time.withTimeout(f, time.fromSeconds(1));
+        print(result);
+    } catch (e | error) {
+        print("timed out");
+    }
+}
+```
+
+## Blocking and non-blocking behavior
+
+- `sleep` is a blocking call.
+- `asyncSleep` is non-blocking from the caller task perspective (suspends via `await`).
+- `withTimeout` races a future against the provided duration and throws on timeout.
 
 ## Error Handling
 

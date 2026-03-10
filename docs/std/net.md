@@ -1,6 +1,6 @@
 # std.net
 
-`std.net` provides blocking TCP networking built on runtime socket primitives.
+`std.net` provides TCP networking built on runtime socket primitives.
 
 ## Overview
 
@@ -29,6 +29,12 @@ pub struct Server {
 | `connect` | `host | string`, `port | int` | `Socket` | connection errors |
 | `listen` | `host | string`, `port | int` | `Server` | bind errors |
 
+### Async functions
+
+| Function | Parameters | Returns | Errors |
+| --- | --- | --- | --- |
+| `asyncConnect` | `host | string`, `port | int` | `Socket` | connection errors |
+
 ### Socket methods
 
 | Method | Parameters | Returns | Errors |
@@ -40,12 +46,30 @@ pub struct Server {
 | `writeString` | `data | string` | `int` | invalid handle, I/O errors |
 | `close` | — | `void` | invalid handle |
 
+### Async socket methods
+
+| Method | Parameters | Returns | Errors |
+| --- | --- | --- | --- |
+| `asyncRead` | `n | int` | `bytes` | invalid handle, I/O errors |
+| `asyncReadAll` | — | `bytes` | invalid handle, I/O errors |
+| `asyncReadString` | — | `string` | invalid handle, UTF-8 errors |
+| `asyncWrite` | `data | bytes` | `int` | invalid handle, I/O errors |
+| `asyncWriteString` | `data | string` | `int` | invalid handle, I/O errors |
+| `asyncClose` | — | `void` | invalid handle |
+
 ### Server methods
 
 | Method | Parameters | Returns | Errors |
 | --- | --- | --- | --- |
 | `accept` | — | `Socket` | invalid handle, accept errors |
 | `close` | — | `void` | invalid handle |
+
+### Async server methods
+
+| Method | Parameters | Returns | Errors |
+| --- | --- | --- | --- |
+| `asyncAccept` | — | `Socket` | invalid handle, accept errors |
+| `asyncClose` | — | `void` | invalid handle |
 
 ## Examples
 
@@ -90,7 +114,10 @@ fun main() | void {
 All networking operations may throw runtime errors. Use `try`/`catch` to handle
 failures such as connection errors or read/write failures.
 
-## Blocking behavior
+## Blocking and non-blocking behavior
 
-`read`, `readAll`, and `accept` are blocking operations. They will wait for data
-or incoming connections. Use `try`/`catch` to handle unexpected disconnections.
+- `connect`, `read`, `readAll`, `readString`, `write`, `accept`, `close` are blocking calls.
+- `asyncConnect`, `asyncRead`, `asyncReadAll`, `asyncReadString`, `asyncWrite`,
+  `asyncAccept`, and `asyncClose` are non-blocking from the caller task perspective
+  (they suspend via `await`).
+- Async variants are recommended for interleaving socket I/O with other async tasks.

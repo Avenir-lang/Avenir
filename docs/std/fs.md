@@ -1,6 +1,6 @@
 # std.fs
 
-`std.fs` provides blocking filesystem access built on runtime file primitives.
+`std.fs` provides filesystem access built on runtime file primitives.
 
 ## Overview
 
@@ -26,6 +26,15 @@ pub struct File {
 | `remove` | `path | string` | `void` | missing path, permission |
 | `mkdir` | `path | string` | `void` | permission, invalid path |
 
+### Async functions
+
+| Function | Parameters | Returns | Errors |
+| --- | --- | --- | --- |
+| `asyncOpen` | `path | string`, `mode | string` | `File` | invalid path, permission, etc. |
+| `asyncExists` | `path | string` | `bool` | stat failures |
+| `asyncRemove` | `path | string` | `void` | missing path, permission |
+| `asyncMkdir` | `path | string` | `void` | permission, invalid path |
+
 ### Path helpers
 
 ```avenir
@@ -49,6 +58,17 @@ pub fun errorWithPath(message | string, path | string) | error
 | `write` | `data | bytes` | `int` | invalid handle, I/O errors |
 | `writeString` | `data | string` | `int` | invalid handle, I/O errors |
 | `close` | — | `void` | invalid handle |
+
+### Async file methods
+
+| Method | Parameters | Returns | Errors |
+| --- | --- | --- | --- |
+| `asyncRead` | `n | int` | `bytes` | invalid handle, I/O errors |
+| `asyncReadAll` | — | `bytes` | invalid handle, I/O errors |
+| `asyncReadString` | — | `string` | invalid handle, UTF-8 errors |
+| `asyncWrite` | `data | bytes` | `int` | invalid handle, I/O errors |
+| `asyncWriteString` | `data | string` | `int` | invalid handle, I/O errors |
+| `asyncClose` | — | `void` | invalid handle |
 
 ## Open modes
 
@@ -106,8 +126,9 @@ root). Absolute paths are used as-is.
 All filesystem operations may throw runtime errors. Use `try`/`catch` to handle
 failures such as missing files or permission errors.
 
-## Blocking behavior
+## Blocking and non-blocking behavior
 
-`read`, `readAll`, and `readString` are blocking operations. They wait for data
-from the underlying file descriptor and return once data is read or EOF is
-reached.
+- `open`, `read`, `readAll`, `readString`, `write`, `close` are blocking calls.
+- `asyncOpen`, `asyncRead`, `asyncReadAll`, `asyncReadString`, `asyncWrite`, `asyncClose`
+  are non-blocking from the caller task perspective (they suspend via `await`).
+- Async variants are recommended when combining FS with other concurrent tasks.
