@@ -38,6 +38,7 @@ type Symbol struct {
 	Node     ast.Node
 	Module   *ModuleInfo // only set for SymModule
 	IsPublic bool        // true if function is public (pub fun)
+	IsGlobal bool        // true for module-level variable declarations
 }
 
 // ModuleInfo holds type-checking information for a module.
@@ -205,6 +206,18 @@ func CheckWorldWithBindings(world *World) (*Bindings, []error) {
 			c.declareFunc(fn)
 		}
 
+		// Register all top-level variables
+		for _, v := range modInfo.Prog.Vars {
+			varType := c.typeOfTypeNode(v.Type)
+			_ = c.global.Insert(&Symbol{
+				Name:     v.Name,
+				Kind:     SymVar,
+				Type:     varType,
+				Node:     v,
+				IsGlobal: true,
+			})
+		}
+
 		// Collect errors from Phase 1 (struct declaration errors)
 		allErrors = append(allErrors, c.errors...)
 	}
@@ -257,6 +270,11 @@ func CheckWorldWithBindings(world *World) (*Bindings, []error) {
 					Module: importedMod,
 				})
 			}
+		}
+
+		// Type-check all top-level variables in this module
+		for _, v := range modInfo.Prog.Vars {
+			c.checkTopLevelVar(v)
 		}
 
 		// Type-check all functions in this module
@@ -1443,6 +1461,20 @@ func (c *Checker) checkStmt(s ast.Stmt) {
 		c.checkBlock(st)
 	default:
 		// Other statements
+	}
+}
+
+func (c *Checker) checkTopLevelVar(s *ast.VarDeclStmt) {
+	typ := c.typeOfTypeNode(s.Type)
+	valType := c.checkExpr(s.Value)
+
+	if !c.assignable(typ, valType) {
+		if iface, ok := typ.(*Interface); ok {
+			c.addInterfaceSatisfactionError(s.Value.Pos(), valType, iface, s.Name)
+		} else {
+			c.addError(s.Pos(), "cannot assign expression of type %s to variable %q of type %s",
+				valType.String(), s.Name, typ.String())
+		}
 	}
 }
 

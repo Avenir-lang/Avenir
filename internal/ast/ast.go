@@ -28,6 +28,7 @@ type TypeNode interface {
 type Program struct {
 	Package    *PackageDecl
 	Imports    []*ImportDecl
+	Vars       []*VarDeclStmt
 	Funcs      []*FunDecl
 	Structs    []*StructDecl
 	Interfaces []*InterfaceDecl

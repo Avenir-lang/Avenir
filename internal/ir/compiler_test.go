@@ -5301,3 +5301,221 @@ async fun main() | string {
 		t.Fatalf("expected 'caught', got %v (%s)", val.Kind, val.String())
 	}
 }
+
+// ===== Top-level variable tests =====
+
+func TestCompile_TopLevelVar_Basic(t *testing.T) {
+	src := `
+pckg main;
+
+var x | int = 42;
+
+fun main() | int {
+    return x;
+}
+`
+	l := lexer.New(src)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("parser error: %s", e)
+		}
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	mod, errs := ir.Compile(prog)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("compile error: %s", e)
+		}
+		t.Fatalf("expected no compile errors, got %d", len(errs))
+	}
+
+	machine := vm.NewVM(mod, runtime.DefaultEnv())
+	val, err := machine.RunMain()
+	if err != nil {
+		t.Fatalf("RunMain error: %v", err)
+	}
+
+	if val.Kind != value.KindInt || val.Int != 42 {
+		t.Fatalf("expected 42, got %v (%s)", val.Int, val.String())
+	}
+}
+
+func TestCompile_TopLevelVar_Mutation(t *testing.T) {
+	src := `
+pckg main;
+
+var counter | int = 0;
+
+fun main() | int {
+    counter = counter + 1;
+    counter = counter + 1;
+    return counter;
+}
+`
+	l := lexer.New(src)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("parser error: %s", e)
+		}
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	mod, errs := ir.Compile(prog)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("compile error: %s", e)
+		}
+		t.Fatalf("expected no compile errors, got %d", len(errs))
+	}
+
+	machine := vm.NewVM(mod, runtime.DefaultEnv())
+	val, err := machine.RunMain()
+	if err != nil {
+		t.Fatalf("RunMain error: %v", err)
+	}
+
+	if val.Kind != value.KindInt || val.Int != 2 {
+		t.Fatalf("expected 2, got %v (%s)", val.Int, val.String())
+	}
+}
+
+func TestCompile_TopLevelVar_WithDecorator(t *testing.T) {
+	src := `
+pckg main;
+
+fun makeDoubler() | fun(fun(int, int) | int) | fun(int, int) | int {
+    return fun(f | fun(int, int) | int) | fun(int, int) | int {
+        return fun(a | int, b | int) | int {
+            return f(a, b) * 2;
+        };
+    };
+}
+
+var doubler | fun(fun(int, int) | int) | fun(int, int) | int = makeDoubler();
+
+@doubler
+fun add(a | int, b | int) | int {
+    return a + b;
+}
+
+fun main() | int {
+    return add(3, 4);
+}
+`
+	l := lexer.New(src)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("parser error: %s", e)
+		}
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	mod, errs := ir.Compile(prog)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("compile error: %s", e)
+		}
+		t.Fatalf("expected no compile errors, got %d", len(errs))
+	}
+
+	machine := vm.NewVM(mod, runtime.DefaultEnv())
+	val, err := machine.RunMain()
+	if err != nil {
+		t.Fatalf("RunMain error: %v", err)
+	}
+
+	if val.Kind != value.KindInt || val.Int != 14 {
+		t.Fatalf("expected 14 (doubler decorator), got %v (%s)", val.Int, val.String())
+	}
+}
+
+func TestCompile_TopLevelVar_MultipleVars(t *testing.T) {
+	src := `
+pckg main;
+
+var a | int = 10;
+var b | int = 20;
+var c | string = "hello";
+
+fun main() | int {
+    return a + b;
+}
+`
+	l := lexer.New(src)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("parser error: %s", e)
+		}
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	mod, errs := ir.Compile(prog)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("compile error: %s", e)
+		}
+		t.Fatalf("expected no compile errors, got %d", len(errs))
+	}
+
+	machine := vm.NewVM(mod, runtime.DefaultEnv())
+	val, err := machine.RunMain()
+	if err != nil {
+		t.Fatalf("RunMain error: %v", err)
+	}
+
+	if val.Kind != value.KindInt || val.Int != 30 {
+		t.Fatalf("expected 30, got %v (%s)", val.Int, val.String())
+	}
+}
+
+func TestCompile_TopLevelVar_UsedInMultipleFunctions(t *testing.T) {
+	src := `
+pckg main;
+
+var factor | int = 3;
+
+fun multiply(x | int) | int {
+    return x * factor;
+}
+
+fun main() | int {
+    return multiply(7);
+}
+`
+	l := lexer.New(src)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("parser error: %s", e)
+		}
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	mod, errs := ir.Compile(prog)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("compile error: %s", e)
+		}
+		t.Fatalf("expected no compile errors, got %d", len(errs))
+	}
+
+	machine := vm.NewVM(mod, runtime.DefaultEnv())
+	val, err := machine.RunMain()
+	if err != nil {
+		t.Fatalf("RunMain error: %v", err)
+	}
+
+	if val.Kind != value.KindInt || val.Int != 21 {
+		t.Fatalf("expected 21, got %v (%s)", val.Int, val.String())
+	}
+}

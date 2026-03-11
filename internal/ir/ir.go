@@ -67,6 +67,10 @@ const (
 	OpSpawn            // A = function index, B = number of arguments; create task + future, schedule, push future
 	OpAwait            // pop future; if ready push result; else suspend current task
 	OpCallBuiltinAsync // A = builtin id, B = number of arguments; call async builtin, create future, push future
+
+	// Module-level variables
+	OpLoadGlobal  // A = global index; push globals[A]
+	OpStoreGlobal // A = global index; globals[A] = top (no pop)
 )
 
 // Instruction is one bytecode instruction
@@ -120,12 +124,18 @@ type Function struct {
 	IsAsync   bool
 }
 
+// GlobalInfo describes a module-level variable.
+type GlobalInfo struct {
+	Name string
+}
+
 // Module represents a compiled Avenir program.
 type Module struct {
 	Functions   []*Function
 	StructTypes []StructTypeInfo
-	MainIndex   int // Index of the main function in the Functions array
-	InitIndex   int // Index of the __init__ function (-1 if none)
+	Globals     []GlobalInfo // module-level variable metadata
+	MainIndex   int          // Index of the main function in the Functions array
+	InitIndex   int          // Index of the __init__ function (-1 if none)
 }
 
 // AddConstInt adds an integer constant and returns its index.

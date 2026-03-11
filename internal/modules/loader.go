@@ -282,6 +282,7 @@ func mergePrograms(programs []*ast.Program) *ast.Program {
 	}
 	for _, prog := range programs {
 		merged.Imports = append(merged.Imports, prog.Imports...)
+		merged.Vars = append(merged.Vars, prog.Vars...)
 		merged.Funcs = append(merged.Funcs, prog.Funcs...)
 		merged.Structs = append(merged.Structs, prog.Structs...)
 		merged.Interfaces = append(merged.Interfaces, prog.Interfaces...)

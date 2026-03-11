@@ -37,6 +37,8 @@ type Compiler struct {
 	// Method mapping: (receiver type name, method name) -> function index
 	methodIndex map[string]map[string]int // receiver type -> method name -> function index
 
+	globalIndex map[string]int // top-level variable name -> global index
+
 	world *types.World // Store world for method lookup
 
 	errors []error
@@ -249,6 +251,16 @@ func CompileWorld(world *types.World, entryMod *types.ModuleInfo, bindings *type
 		mod.StructTypes = structTable
 	}
 
+	// Collect top-level variables and assign global indices
+	globalIdx := make(map[string]int)
+	for _, modInfo := range world.Modules {
+		for _, v := range modInfo.Prog.Vars {
+			idx := len(mod.Globals)
+			globalIdx[v.Name] = idx
+			mod.Globals = append(mod.Globals, GlobalInfo{Name: v.Name})
+		}
+	}
+
 	// Compile all functions
 	c := &Compiler{
 		prog:             nil, // Not used in multi-module mode
@@ -261,6 +273,7 @@ func CompileWorld(world *types.World, entryMod *types.ModuleInfo, bindings *type
 		structTypes:      structTypes,
 		structIndex:      structIndex,
 		methodIndex:      methodIndex,
+		globalIndex:      globalIdx,
 		world:            world,
 		errors:           []error{},
 	}
@@ -602,7 +615,9 @@ func (c *Compiler) addError(pos token.Position, format string, args ...interface
 }
 
 func (c *Compiler) generateInitFunc(bindings *types.Bindings, funcIndexByDecl map[*ast.FunDecl]int) {
-	if bindings == nil || len(bindings.Decorators) == 0 {
+	hasDecorators := bindings != nil && len(bindings.Decorators) > 0
+	hasGlobals := len(c.mod.Globals) > 0
+	if !hasDecorators && !hasGlobals {
 		return
 	}
 
@@ -620,20 +635,36 @@ func (c *Compiler) generateInitFunc(bindings *types.Bindings, funcIndexByDecl ma
 		scope: newLocalScope(nil),
 	}
 
-	for fn, infos := range bindings.Decorators {
-		origIdx, ok := funcIndexByDecl[fn]
-		if !ok {
-			continue
+	// Phase 1: Initialize top-level variables (before decorators)
+	for _, modInfo := range c.world.Modules {
+		for _, v := range modInfo.Prog.Vars {
+			gIdx, ok := c.globalIndex[v.Name]
+			if !ok {
+				continue
+			}
+			fc.compileExpr(v.Value)
+			fc.chunk.Emit(OpStoreGlobal, gIdx, 0)
+			fc.chunk.Emit(OpPop, 0, 0)
 		}
+	}
 
-		fc.chunk.Emit(OpClosure, origIdx, 0)
+	// Phase 2: Apply decorators
+	if hasDecorators {
+		for fn, infos := range bindings.Decorators {
+			origIdx, ok := funcIndexByDecl[fn]
+			if !ok {
+				continue
+			}
 
-		for i := len(infos) - 1; i >= 0; i-- {
-			fc.compileExpr(infos[i].Expr)
-			fc.chunk.Emit(OpCallValue, 1, 0)
+			fc.chunk.Emit(OpClosure, origIdx, 0)
+
+			for i := len(infos) - 1; i >= 0; i-- {
+				fc.compileExpr(infos[i].Expr)
+				fc.chunk.Emit(OpCallValue, 1, 0)
+			}
+
+			fc.chunk.Emit(OpSetFunc, origIdx, 0)
 		}
-
-		fc.chunk.Emit(OpSetFunc, origIdx, 0)
 	}
 
 	fc.chunk.Emit(OpReturn, 0, 0)
@@ -913,7 +944,7 @@ func (fc *funcCompiler) compileStmt(s ast.Stmt) {
 		fc.chunk.Emit(OpPop, 0, 0)
 
 	case *ast.AssignStmt:
-		// Check if it's a local or upvalue
+		// Check if it's a local, upvalue, or global
 		if slot, ok := fc.lookupLocal(st.Name); ok {
 			fc.compileExpr(st.Value)
 			fc.chunk.Emit(OpStoreLocal, slot, 0)
@@ -921,6 +952,10 @@ func (fc *funcCompiler) compileStmt(s ast.Stmt) {
 		} else if upvalueIdx, ok := fc.lookupUpvalue(st.Name); ok {
 			fc.compileExpr(st.Value)
 			fc.chunk.Emit(OpStoreUpvalue, upvalueIdx, 0)
+			fc.chunk.Emit(OpPop, 0, 0)
+		} else if gIdx, ok := fc.c.globalIndex[st.Name]; ok {
+			fc.compileExpr(st.Value)
+			fc.chunk.Emit(OpStoreGlobal, gIdx, 0)
 			fc.chunk.Emit(OpPop, 0, 0)
 		} else {
 			fc.addError(st, "unknown variable %q", st.Name)
@@ -1335,7 +1370,16 @@ func (fc *funcCompiler) compileExpr(e ast.Expr) {
 			fc.chunk.Emit(OpLoadUpvalue, upvalueIdx, 0)
 			return
 		}
-		// 3. function symbol bound by the type checker
+		// 3. module-level global variables
+		if fc.c.bindings != nil {
+			if sym, ok := fc.c.bindings.Idents[ex]; ok && sym.IsGlobal {
+				if gIdx, ok2 := fc.c.globalIndex[ex.Name]; ok2 {
+					fc.chunk.Emit(OpLoadGlobal, gIdx, 0)
+					return
+				}
+			}
+		}
+		// 4. function symbol bound by the type checker
 		if fc.c.bindings != nil {
 			if sym, ok := fc.c.bindings.Idents[ex]; ok && sym.Kind == types.SymFunc {
 				if fnDecl, ok2 := sym.Node.(*ast.FunDecl); ok2 {

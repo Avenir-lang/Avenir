@@ -61,6 +61,7 @@ type VM struct {
 	handlers []exceptionHandler
 
 	closureOverrides []*value.Closure // decorator overrides indexed by function index
+	globals          []value.Value    // module-level variables
 
 	scheduler   *runtime.Scheduler
 	currentTask *taskContext
@@ -121,8 +122,10 @@ func NewVM(m *ir.Module, env *runtime.Env) *VM {
 		env.SetStructTypeNames(names)
 	}
 	var overrides []*value.Closure
+	var globals []value.Value
 	if m != nil {
 		overrides = make([]*value.Closure, len(m.Functions))
+		globals = make([]value.Value, len(m.Globals))
 	}
 	vm := &VM{
 		mod:              m,
@@ -131,6 +134,7 @@ func NewVM(m *ir.Module, env *runtime.Env) *VM {
 		env:              env,
 		handlers:         make([]exceptionHandler, 0, 16),
 		closureOverrides: overrides,
+		globals:          globals,
 	}
 	// Enable builtins to call closures by setting the closure caller
 	// We need to wrap callClosure to match the ClosureCaller signature
@@ -204,6 +208,7 @@ func (vm *VM) spawnChild() *VM {
 		frames:    make([]Frame, 0, 16),
 		env:       vm.env,
 		handlers:  make([]exceptionHandler, 0, 16),
+		globals:   vm.globals,
 		scheduler: vm.scheduler,
 	}
 	return child
@@ -890,6 +895,22 @@ func (vm *VM) callClosure(clo *value.Closure, numArgs int) (value.Value, error) 
 				vm.closureOverrides = newOverrides
 			}
 			vm.closureOverrides[inst.A] = cloVal.Closure
+
+		case ir.OpLoadGlobal:
+			if inst.A < 0 || inst.A >= len(vm.globals) {
+				return value.Value{}, fmt.Errorf("OpLoadGlobal: index %d out of range (len=%d)", inst.A, len(vm.globals))
+			}
+			vm.push(vm.globals[inst.A])
+
+		case ir.OpStoreGlobal:
+			v, err := vm.peek(0)
+			if err != nil {
+				return value.Value{}, err
+			}
+			if inst.A < 0 || inst.A >= len(vm.globals) {
+				return value.Value{}, fmt.Errorf("OpStoreGlobal: index %d out of range (len=%d)", inst.A, len(vm.globals))
+			}
+			vm.globals[inst.A] = v
 
 		case ir.OpReturn:
 			currentFrameIdx := len(vm.frames) - 1
