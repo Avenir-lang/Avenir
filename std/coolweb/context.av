@@ -1,0 +1,43 @@
+pckg std.coolweb;
+
+import std.json as jsonlib;
+
+struct context {}
+
+pub mut struct Context {
+    pub request | Request
+    pub mut params | dict<string>
+    pub mut query | dict<string>
+    pub mut cookies | dict<string>
+    pub mut state | dict<any>
+    pub _connHandle | any
+}
+
+pub fun (ctx | Context).text(body | string, status | int = 200) | Response {
+    return textResponse(body, status);
+}
+
+pub fun (ctx | Context).json(data | any, status | int = 200) | Response {
+    return jsonResponse(data, status);
+}
+
+pub fun (ctx | Context).html(body | string, status | int = 200) | Response {
+    return htmlResponse(body, status);
+}
+
+pub fun (ctx | Context).redirect(url | string, status | int = 302) | Response {
+    return redirectResponse(url, status);
+}
+
+pub fun (ctx | Context).jsonBody() | any {
+    var bodyStr | string = ctx.request.body.toString();
+    return jsonlib.parse(bodyStr);
+}
+
+pub fun (ctx | Context).textBody() | string {
+    return ctx.request.body.toString();
+}
+
+pub fun (ctx | Context).bodyBytes() | bytes {
+    return ctx.request.body;
+}

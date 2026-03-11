@@ -1,0 +1,28 @@
+pckg main;
+
+import std.coolweb;
+
+var app | coolweb.App = coolweb.newApp();
+
+fun authMiddleware(ctx | coolweb.Context, next | fun() | coolweb.Response) | coolweb.Response {
+    if (!ctx.request.headers.has("Authorization")) {
+        return ctx.json({ "error": "unauthorized" }, 401);
+    }
+    return next();
+}
+
+@app.get("/secret")
+fun secret(ctx | coolweb.Context) | coolweb.Response {
+    return ctx.json({ "data": "secret stuff" });
+}
+
+@app.get("/public")
+fun public(ctx | coolweb.Context) | coolweb.Response {
+    return ctx.text("This is public");
+}
+
+async fun main() | void {
+    app.use(coolweb.newLogger(includeQuery = true, includeHeaders = true, skipPaths = []));
+    app.use(authMiddleware);
+    await app.run(8080);
+}

@@ -135,6 +135,39 @@ fun point_sum(p | Point) | int {
 
 Methods provide a more natural syntax for object-oriented programming.
 
+## Default Parameters
+
+Methods support default parameters just like regular functions:
+
+```avenir
+pub struct Response {
+    body | string
+    status | int
+}
+
+pub fun (ctx | Context).text(body | string, status | int = 200) | Response {
+    return Response{body = body, status = status};
+}
+
+// Can be called with or without status
+ctx.text("Hello");           // Uses default status 200
+ctx.text("Not Found", 404);  // Explicit status
+```
+
+Default parameters work for both instance and static methods.
+
+## Chained Member Access
+
+The parser supports chained member access for method calls and field access:
+
+```avenir
+// Method chaining
+var result | string = obj.a.b.c();
+
+// Field assignment chaining
+obj.nested.field = value;
+```
+
 ## Built-in Methods
 
 Built-in methods on `list`, `string`, `bytes`, and `dict` are documented in

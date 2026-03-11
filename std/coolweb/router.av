@@ -1,0 +1,120 @@
+pckg std.coolweb;
+
+struct router {}
+
+pub mut struct Router {
+    pub mut prefix | string
+    pub mut routes | list<any>
+    pub mut middlewares | list<any>
+    pub mut children | list<any>
+}
+
+pub fun newRouter(prefix | string) | Router {
+    return Router{
+        prefix = prefix,
+        routes = [],
+        middlewares = [],
+        children = []
+    };
+}
+
+pub fun (r | Router).addRoute(method | string, path | string, handler | fun(Context) | Response) | void {
+    var fullPattern | string = r.prefix + path;
+    var rt | Route = compileRoute(method, fullPattern, handler);
+    r.routes = r.routes.append(rt);
+}
+
+pub fun (r | Router).get(path | string) | fun(fun(Context) | Response) | fun(Context) | Response {
+    return fun(handler | fun(Context) | Response) | fun(Context) | Response {
+        r.addRoute("GET", path, handler);
+        return handler;
+    };
+}
+
+pub fun (r | Router).post(path | string) | fun(fun(Context) | Response) | fun(Context) | Response {
+    return fun(handler | fun(Context) | Response) | fun(Context) | Response {
+        r.addRoute("POST", path, handler);
+        return handler;
+    };
+}
+
+pub fun (r | Router).put(path | string) | fun(fun(Context) | Response) | fun(Context) | Response {
+    return fun(handler | fun(Context) | Response) | fun(Context) | Response {
+        r.addRoute("PUT", path, handler);
+        return handler;
+    };
+}
+
+pub fun (r | Router).patch(path | string) | fun(fun(Context) | Response) | fun(Context) | Response {
+    return fun(handler | fun(Context) | Response) | fun(Context) | Response {
+        r.addRoute("PATCH", path, handler);
+        return handler;
+    };
+}
+
+pub fun (r | Router).delete(path | string) | fun(fun(Context) | Response) | fun(Context) | Response {
+    return fun(handler | fun(Context) | Response) | fun(Context) | Response {
+        r.addRoute("DELETE", path, handler);
+        return handler;
+    };
+}
+
+pub fun (r | Router).options(path | string) | fun(fun(Context) | Response) | fun(Context) | Response {
+    return fun(handler | fun(Context) | Response) | fun(Context) | Response {
+        r.addRoute("OPTIONS", path, handler);
+        return handler;
+    };
+}
+
+pub fun (r | Router).use(mw | fun(Context, fun() | Response) | Response) | void {
+    r.middlewares = r.middlewares.append(mw);
+}
+
+pub fun (r | Router).mount(child | Router) | void {
+    r.children = r.children.append(child);
+}
+
+pub fun (r | Router).resolve(method | string, pathSegments | list<string>) | dict<any> {
+    var i | int = 0;
+    while (i < r.routes.length()) {
+        var rt | Route = r.routes.get(i);
+        var result | dict<any> = matchRoute(rt, method, pathSegments);
+        if (result["matched"] == true) {
+            return {
+                "found": true,
+                "handler": rt.handler,
+                "params": result["params"],
+                "pattern": rt.pattern,
+                "middlewares": r.middlewares
+            };
+        }
+        i = i + 1;
+    }
+    var j | int = 0;
+    while (j < r.children.length()) {
+        var child | Router = r.children.get(j);
+        var childResult | dict<any> = child.resolve(method, pathSegments);
+        if (childResult["found"] == true) {
+            var combined | list<any> = concatLists(r.middlewares, childResult["middlewares"]);
+            return {
+                "found": true,
+                "handler": childResult["handler"],
+                "params": childResult["params"],
+                "pattern": childResult["pattern"],
+                "middlewares": combined
+            };
+        }
+        j = j + 1;
+    }
+    return { "found": false };
+}
+
+fun concatLists(a | list<any>, b | list<any>) | list<any> {
+    var result | list<any> = a.copy();
+    var i | int = 0;
+    while (i < b.length()) {
+        result = result.append(b.get(i));
+        i = i + 1;
+    }
+    return result;
+}

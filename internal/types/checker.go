@@ -180,7 +180,7 @@ func CheckWorldWithBindings(world *World) (*Bindings, []error) {
 	bindings := NewBindings()
 	var allErrors []error
 
-	// Phase 1: Create scopes and register all top-level functions for each module
+	// Phase 1a: Create scopes and register builtins for each module
 	for _, modInfo := range world.Modules {
 		modInfo.Scope = NewScope(nil)
 		c := &Checker{
@@ -188,25 +188,79 @@ func CheckWorldWithBindings(world *World) (*Bindings, []error) {
 			bindings:      bindings,
 			currentModule: modInfo.Name,
 		}
-		// Register builtins in each module scope
 		c.declareBuiltins()
 
-		// Register all top-level structs
+		// Register all top-level struct names (forward declarations only)
 		for _, st := range modInfo.Prog.Structs {
-			c.declareStruct(st)
+			c.forwardDeclareStruct(st)
 		}
 
-		// Register all top-level interfaces
+		allErrors = append(allErrors, c.errors...)
+	}
+
+	// Phase 1b: Process imports so that cross-module types are available
+	for _, modInfo := range world.Modules {
+		c := &Checker{
+			global:        modInfo.Scope,
+			bindings:      bindings,
+			currentModule: modInfo.Name,
+		}
+		c.scope = c.global
+		for _, imp := range modInfo.Prog.Imports {
+			importFQN := strings.Join(imp.Path, ".")
+			importedMod, ok := world.Modules[importFQN]
+			if !ok {
+				continue
+			}
+			localAlias := imp.Alias
+			if localAlias == "" {
+				if len(imp.Path) > 0 {
+					localAlias = imp.Path[len(imp.Path)-1]
+				} else {
+					localAlias = importFQN
+				}
+			}
+			_ = c.scope.Insert(&Symbol{
+				Name:   localAlias,
+				Kind:   SymModule,
+				Type:   nil,
+				Node:   imp,
+				Module: importedMod,
+			})
+			if localAlias != importFQN {
+				_ = c.scope.Insert(&Symbol{
+					Name:   importFQN,
+					Kind:   SymModule,
+					Type:   nil,
+					Node:   imp,
+					Module: importedMod,
+				})
+			}
+		}
+		allErrors = append(allErrors, c.errors...)
+	}
+
+	// Phase 1c: Resolve struct fields, interfaces, functions, and top-level vars
+	for _, modInfo := range world.Modules {
+		c := &Checker{
+			global:        modInfo.Scope,
+			bindings:      bindings,
+			currentModule: modInfo.Name,
+		}
+		c.scope = c.global
+
+		for _, st := range modInfo.Prog.Structs {
+			c.resolveStructFields(st)
+		}
+
 		for _, iface := range modInfo.Prog.Interfaces {
 			c.declareInterface(iface)
 		}
 
-		// Register all top-level functions
 		for _, fn := range modInfo.Prog.Funcs {
 			c.declareFunc(fn)
 		}
 
-		// Register all top-level variables
 		for _, v := range modInfo.Prog.Vars {
 			varType := c.typeOfTypeNode(v.Type)
 			_ = c.global.Insert(&Symbol{
@@ -218,7 +272,6 @@ func CheckWorldWithBindings(world *World) (*Bindings, []error) {
 			})
 		}
 
-		// Collect errors from Phase 1 (struct declaration errors)
 		allErrors = append(allErrors, c.errors...)
 	}
 
@@ -441,8 +494,7 @@ func (c *Checker) declareInterface(iface *ast.InterfaceDecl) {
 
 // ----- Structs -----
 
-func (c *Checker) declareStruct(st *ast.StructDecl) {
-	// If the struct has type parameters, register it as a generic struct template
+func (c *Checker) forwardDeclareStruct(st *ast.StructDecl) {
 	if len(st.TypeParams) > 0 {
 		if c.genericStructs == nil {
 			c.genericStructs = make(map[string]*GenericStruct)
@@ -466,7 +518,53 @@ func (c *Checker) declareStruct(st *ast.StructDecl) {
 		return
 	}
 
-	// Build field list
+	structType := &Struct{
+		Name:            st.Name,
+		Fields:          nil,
+		IsPublic:        st.IsPublic,
+		IsMutable:       st.IsMutable,
+		InstanceMethods: make(map[string]*Method),
+		StaticMethods:   make(map[string]*Method),
+	}
+
+	if c.structTypes == nil {
+		c.structTypes = make(map[string]*Struct)
+	}
+	c.structTypes[st.Name] = structType
+
+	if err := c.global.Insert(&Symbol{
+		Name:     st.Name,
+		Kind:     SymType,
+		Type:     structType,
+		Node:     st,
+		IsPublic: st.IsPublic,
+	}); err != nil {
+		c.addError(st.Pos(), "struct %q: %v", st.Name, err)
+	}
+}
+
+func (c *Checker) resolveStructFields(st *ast.StructDecl) {
+	if len(st.TypeParams) > 0 {
+		return
+	}
+
+	// Look up the struct type from scope (may have been registered by a different checker instance)
+	var structType *Struct
+	if c.structTypes != nil {
+		structType = c.structTypes[st.Name]
+	}
+	if structType == nil {
+		sym := c.global.Lookup(st.Name)
+		if sym == nil || sym.Kind != SymType {
+			return
+		}
+		var ok bool
+		structType, ok = sym.Type.(*Struct)
+		if !ok {
+			return
+		}
+	}
+
 	fields := make([]Field, 0, len(st.Fields))
 	fieldNames := make(map[string]bool)
 
@@ -477,10 +575,8 @@ func (c *Checker) declareStruct(st *ast.StructDecl) {
 		}
 		fieldNames[f.Name] = true
 
-		// Visibility consistency rule: private structs cannot have public fields
 		if !st.IsPublic && f.IsPublic {
 			c.addError(f.Pos(), "public field %q declared in private struct %q", f.Name, st.Name)
-			// Continue processing to report all errors, but mark field as private
 			f.IsPublic = false
 		}
 
@@ -489,15 +585,12 @@ func (c *Checker) declareStruct(st *ast.StructDecl) {
 			continue
 		}
 
-		// Validate and type-check default expression if present
 		if f.DefaultExpr != nil {
-			// Validate that default expression is a compile-time constant
 			if !c.isCompileTimeConstant(f.DefaultExpr) {
 				c.addError(f.DefaultExpr.Pos(), "default value for field %q must be a compile-time constant", f.Name)
 				continue
 			}
 
-			// Type-check default expression against field type
 			defaultType := c.checkExpr(f.DefaultExpr)
 			if !c.assignable(fieldType, defaultType) {
 				c.addError(f.DefaultExpr.Pos(), "default value for field %q has type %s, expected %s",
@@ -506,10 +599,9 @@ func (c *Checker) declareStruct(st *ast.StructDecl) {
 			}
 		}
 
-		// Compute field mutability: field-level mut overrides struct default
-		fieldMutable := st.IsMutable // struct default
+		fieldMutable := st.IsMutable
 		if f.IsMutable {
-			fieldMutable = true // field-level override
+			fieldMutable = true
 		}
 
 		fields = append(fields, Field{
@@ -521,32 +613,12 @@ func (c *Checker) declareStruct(st *ast.StructDecl) {
 		})
 	}
 
-	// Create struct type
-	structType := &Struct{
-		Name:            st.Name,
-		Fields:          fields,
-		IsPublic:        st.IsPublic,
-		IsMutable:       st.IsMutable,
-		InstanceMethods: make(map[string]*Method), // Initialize instance methods map
-		StaticMethods:   make(map[string]*Method), // Initialize static methods map
-	}
+	structType.Fields = fields
+}
 
-	// Store in checker's struct registry
-	if c.structTypes == nil {
-		c.structTypes = make(map[string]*Struct)
-	}
-	c.structTypes[st.Name] = structType
-
-	// Insert into scope
-	if err := c.global.Insert(&Symbol{
-		Name:     st.Name,
-		Kind:     SymType,
-		Type:     structType,
-		Node:     st,
-		IsPublic: st.IsPublic,
-	}); err != nil {
-		c.addError(st.Pos(), "struct %q: %v", st.Name, err)
-	}
+func (c *Checker) declareStruct(st *ast.StructDecl) {
+	c.forwardDeclareStruct(st)
+	c.resolveStructFields(st)
 }
 
 // ----- Functions -----
@@ -646,14 +718,20 @@ func (c *Checker) declareFunc(fn *ast.FunDecl) {
 			methodParams = append([]Type{receiverType}, params...)
 		}
 
+		methodResult := retType
+		if fn.IsAsync {
+			methodResult = &Future{Inner: retType}
+		}
+
 		// Register the method
 		methodMap[fn.Name] = &Method{
 			Name:       fn.Name,
 			Receiver:   receiverType,
 			ParamTypes: methodParams,
-			Result:     retType,
+			Result:     methodResult,
 			IsStatic:   isStatic,
 			IsPublic:   fn.IsPublic,
+			Decl:       fn,
 		}
 		return // Methods are not inserted into global scope
 	}
@@ -820,7 +898,7 @@ func (c *Checker) checkFunc(fn *ast.FunDecl) {
 	for i, param := range fn.Params {
 		if param.Default != nil {
 			defaultType := c.checkExpr(param.Default)
-			paramType := fnType.ParamTypes[i]
+			paramType := fnType.ParamTypes[paramTypeOffset+i]
 			if !c.assignable(paramType, defaultType) {
 				c.addError(param.Default.Pos(), "default value for parameter %q has type %s, expected %s",
 					param.Name, defaultType.String(), paramType.String())
@@ -2179,27 +2257,16 @@ func (c *Checker) checkMember(m *ast.MemberExpr) Type {
 	// Then check for instance methods
 	if structType.InstanceMethods != nil {
 		if method, ok := structType.InstanceMethods[m.Name]; ok {
-			// Record binding for IR compiler
 			if c.bindings != nil {
-				// For instance methods, ParamTypes includes receiver as first parameter
-				// But for the call site, we want the function type without receiver
-				// (the receiver will be passed separately)
-				// Actually, wait - let me check how this is used in checkCall...
-				// Looking at the code, it seems like method.ParamTypes for instance methods
-				// should include the receiver. But for the function type returned here,
-				// we want to return the type that matches what will be called.
-				// Actually, for instance methods, the receiver is passed as the first argument,
-				// so the function type should include it. But we need to distinguish between
-				// static and instance methods in the IR compiler.
-				// Let me keep it as-is for now and see if we need to adjust.
 				methodFuncType := &Func{
-					ParamTypes: method.ParamTypes, // Includes receiver for instance methods
+					ParamTypes: method.ParamTypes,
 					Result:     method.Result,
 				}
 				c.bindings.Members[m] = &Symbol{
 					Name: m.Name,
 					Kind: SymFunc,
 					Type: methodFuncType,
+					Node: method.Decl,
 				}
 			}
 			// Return function type (includes receiver as first parameter for instance methods)

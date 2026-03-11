@@ -1,0 +1,14 @@
+pckg main;
+
+import std.coolweb;
+
+var app | coolweb.App = coolweb.newApp();
+
+@app.get("/")
+fun index(ctx | coolweb.Context) | coolweb.Response {
+    return ctx.text("Hello Avenir!");
+}
+
+async fun main() | void {
+    await app.run(8080);
+}

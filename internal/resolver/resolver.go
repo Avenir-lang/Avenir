@@ -68,6 +68,9 @@ func (r *Resolver) collectFunction(fn ast.Node, parent *FunctionInfo) *FunctionI
 	switch f := fn.(type) {
 	case *ast.FunDecl:
 		info = &FunctionInfo{Node: fn}
+		if f.Receiver != nil && f.Receiver.Kind == ast.ReceiverInstance {
+			params = append(params, f.Receiver.Name)
+		}
 		for _, p := range f.Params {
 			params = append(params, p.Name)
 		}

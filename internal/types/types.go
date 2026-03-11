@@ -277,6 +277,7 @@ type Method struct {
 	Result     Type
 	IsStatic   bool // true for static methods, false for instance methods
 	IsPublic   bool // true if method is public (pub fun), false if private
+	Decl       *ast.FunDecl
 }
 
 func (s *Struct) String() string {

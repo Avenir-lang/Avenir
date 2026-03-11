@@ -92,6 +92,22 @@ Struct literals compile to `OpMakeStruct` with fields pushed in declared order.
 For generic struct literals, the compiler resolves the monomorphized struct name
 and emits `OpMakeStruct` for that concrete struct type index.
 
+### Method Calls
+
+Method calls are compiled with proper receiver handling:
+
+- Instance methods: receiver expression is compiled first and passed as the first argument
+- Static methods: compiled as regular function calls without receiver
+- The compiler detects instance methods via the binding's `Method.Decl` field
+- Default parameters are handled through argument reordering in `reorderCallArgs`
+
+### Struct Type Indexing
+
+The compiler builds a `structIndex` map from struct names to type indices:
+- Duplicate struct names across modules are skipped to prevent index out-of-range errors
+- Only the first occurrence of each struct name is registered
+- This ensures consistent indexing when multiple modules define structs with the same name
+
 ### Interpolated Strings
 
 `"x=${expr}"` lowers to:

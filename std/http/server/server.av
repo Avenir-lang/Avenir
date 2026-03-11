@@ -39,3 +39,11 @@ pub async fun (s | HttpServer).asyncServe(handler | fun(HttpRequest) | HttpRespo
         await __builtin_async_http_respond(raw["__handle"], resp.status, resp.headers, resp.body);
     }
 }
+
+pub async fun (s | HttpServer).asyncAccept() | dict<any> {
+    return await __builtin_async_http_accept(s.handle);
+}
+
+pub async fun rawRespond(handle | any, status | int, headers | dict<string>, body | bytes) | void {
+    await __builtin_async_http_respond(handle, status, headers, body);
+}

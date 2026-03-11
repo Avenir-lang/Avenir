@@ -1,0 +1,19 @@
+pckg std.coolweb;
+
+struct middleware {}
+
+pub fun executeChain(middlewares | list<any>, handler | fun(Context) | Response, ctx | Context) | Response {
+    return executeAt(middlewares, handler, ctx, 0);
+}
+
+fun executeAt(middlewares | list<any>, handler | fun(Context) | Response, ctx | Context, idx | int) | Response {
+    if (idx >= middlewares.length()) {
+        return handler(ctx);
+    }
+    var mw | fun(Context, fun() | Response) | Response = middlewares.get(idx);
+    var nextIdx | int = idx + 1;
+    var next | fun() | Response = fun() | Response {
+        return executeAt(middlewares, handler, ctx, nextIdx);
+    };
+    return mw(ctx, next);
+}

@@ -1128,9 +1128,35 @@ func (p *Parser) parseStatement() ast.Stmt {
 				NamePos: p.cur.Pos,
 			})
 			p.nextToken() // consume the ident we're currently on
-			// Continue parsing postfix operations (calls, indexing, etc.)
+			// Continue parsing postfix operations (calls, indexing, member access, etc.)
 			for {
 				switch p.cur.Kind {
+				case token.Dot:
+					p.nextToken() // consume dot
+					if p.cur.Kind != token.Ident {
+						p.errorf(p.cur.Pos, "expected identifier after '.'")
+						return &ast.ExprStmt{Expression: expr}
+					}
+					nameTok := p.cur
+					p.nextToken()
+					if p.cur.Kind == token.Assign {
+						assignPos := p.cur.Pos
+						p.expect(token.Assign)
+						value := p.parseExpr()
+						p.expect(token.Semicolon)
+						return &ast.StructFieldAssignStmt{
+							Struct:    expr,
+							Field:     nameTok.Lexeme,
+							FieldPos:  nameTok.Pos,
+							Value:     value,
+							AssignPos: assignPos,
+						}
+					}
+					expr = &ast.MemberExpr{
+						X:       expr,
+						Name:    nameTok.Lexeme,
+						NamePos: nameTok.Pos,
+					}
 				case token.LParen:
 					// function call
 					lparen := p.cur

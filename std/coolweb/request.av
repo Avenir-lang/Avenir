@@ -1,0 +1,11 @@
+pckg std.coolweb;
+
+struct request {}
+
+pub struct Request {
+    pub method | string
+    pub path | string
+    pub fullPath | string
+    pub headers | dict<string>
+    pub body | bytes
+}

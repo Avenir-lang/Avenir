@@ -1,0 +1,48 @@
+pckg std.coolweb;
+
+import std.json as jsonlib;
+
+struct response {}
+
+pub struct Response {
+    pub status | int
+    pub headers | dict<string>
+    pub body | bytes
+}
+
+pub fun textResponse(body | string, status | int = 200) | Response {
+    var headers | dict<string> = { "Content-Type": "text/plain; charset=utf-8" };
+    return Response{
+        status = status,
+        headers = headers,
+        body = fromString(body)
+    };
+}
+
+pub fun jsonResponse(data | any, status | int = 200) | Response {
+    var headers | dict<string> = { "Content-Type": "application/json" };
+    var text | string = jsonlib.stringify(data);
+    return Response{
+        status = status,
+        headers = headers,
+        body = fromString(text)
+    };
+}
+
+pub fun htmlResponse(body | string, status | int = 200) | Response {
+    var headers | dict<string> = { "Content-Type": "text/html; charset=utf-8" };
+    return Response{
+        status = status,
+        headers = headers,
+        body = fromString(body)
+    };
+}
+
+pub fun redirectResponse(url | string, status | int = 302) | Response {
+    var headers | dict<string> = { "Location": url };
+    return Response{
+        status = status,
+        headers = headers,
+        body = fromString("")
+    };
+}

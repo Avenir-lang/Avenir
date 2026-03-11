@@ -118,6 +118,7 @@ func registerAsyncAccept() {
 					requestHandleKey: value.Bytes(req.Handle),
 					"method":         value.Str(req.Method),
 					"path":           value.Str(req.Path),
+					"remote_addr":    value.Str(req.RemoteAddr),
 					"headers":        value.Dict(headers),
 					"body":           value.Bytes(req.Body),
 				}), nil

@@ -55,3 +55,21 @@ stringification as `print`.
 The `+` operator supports string concatenation only when **both operands are
 strings**. There are no implicit conversions for `+`. Use interpolation when
 you need to include non-strings.
+
+## Bytes to String Conversion
+
+For converting `bytes` to `string`, use the `toString()` method on the bytes value:
+
+```avenir
+var data | bytes = http.response.body;
+var text | string = data.toString();
+```
+
+For other types (like `int`), use string interpolation:
+
+```avenir
+var port | int = 8080;
+var msg | string = "Server running on port ${port}";
+```
+
+There is no global `toString()` function - use the appropriate method or interpolation for the type.

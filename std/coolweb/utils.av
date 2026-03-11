@@ -1,0 +1,61 @@
+pckg std.coolweb;
+
+struct utils {}
+
+pub fun parseQueryString(qs | string) | dict<string> {
+    var result | dict<string> = {};
+    if (qs == "") {
+        return result;
+    }
+    var pairs | list<string> = qs.split("&");
+    var i | int = 0;
+    while (i < pairs.length()) {
+        var pair | string = pairs.get(i);
+        if (pair != "") {
+            var eqIdx | int = pair.indexOf("=");
+            if (eqIdx >= 0) {
+                var parts | list<string> = pair.split("=");
+                var key | string = parts.get(0);
+                var val | string = "";
+                if (parts.length() > 1) {
+                    val = parts.get(1);
+                }
+                result.set(key, val);
+            } else {
+                result.set(pair, "");
+            }
+        }
+        i = i + 1;
+    }
+    return result;
+}
+
+pub fun parseCookieHeader(headers | dict<any>) | dict<string> {
+    var result | dict<string> = {};
+    if (!headers.has("Cookie")) {
+        return result;
+    }
+    var cookieStr | string = headers["Cookie"];
+    var pairs | list<string> = cookieStr.split(";");
+    var i | int = 0;
+    while (i < pairs.length()) {
+        var pairRaw | string = pairs.get(i);
+        var pair | string = pairRaw.trim();
+        if (pair != "") {
+            var eqIdx | int = pair.indexOf("=");
+            if (eqIdx >= 0) {
+                var parts | list<string> = pair.split("=");
+                var keyRaw | string = parts.get(0);
+                var key | string = keyRaw.trim();
+                var val | string = "";
+                if (parts.length() > 1) {
+                    var valRaw | string = parts.get(1);
+                    val = valRaw.trim();
+                }
+                result.set(key, val);
+            }
+        }
+        i = i + 1;
+    }
+    return result;
+}

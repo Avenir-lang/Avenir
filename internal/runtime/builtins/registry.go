@@ -58,11 +58,12 @@ type HTTP interface {
 
 // HTTPRequestData represents a parsed HTTP request returned by the runtime service.
 type HTTPRequestData struct {
-	Handle  []byte
-	Method  string
-	Path    string
-	Headers map[string]string
-	Body    []byte
+	Handle     []byte
+	Method     string
+	Path       string
+	RemoteAddr string
+	Headers    map[string]string
+	Body       []byte
 }
 
 // HTTPResponseData represents a response returned by the runtime service.

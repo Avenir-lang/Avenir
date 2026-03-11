@@ -1,0 +1,156 @@
+pckg std.coolweb;
+
+struct logger {}
+
+pub struct LoggerConfig {
+    pub level | string = "info"
+    pub includeHeaders | bool = false
+    pub includeQuery | bool = true
+    pub includeCookies | bool = false
+    pub includeBodyBytes | bool = false
+    pub maxBodyPreviewBytes | int = 256
+    pub skipPaths | list<string> = ["/health", "/metrics"]
+    pub requestIdHeader | string = "X-Request-Id"
+    pub emitStartLine | bool = true
+    pub emitEndLine | bool = true
+    pub includeClientIp | bool = true
+}
+
+pub fun newLogger(includeQuery | bool = true, includeHeaders | bool = false, includeCookies | bool = false, includeBodyBytes | bool = false, includeClientIp | bool = true, skipPaths | list<string> = ["/health", "/metrics"], level | string = "info") | fun(Context, fun() | Response) | Response {
+    var config | LoggerConfig = LoggerConfig{
+        level = level,
+        includeHeaders = includeHeaders,
+        includeQuery = includeQuery,
+        includeCookies = includeCookies,
+        includeBodyBytes = includeBodyBytes,
+        includeClientIp = includeClientIp,
+        skipPaths = skipPaths
+    };
+    return loggerWithConfig(config);
+}
+
+pub fun loggerWithConfig(config | LoggerConfig) | fun(Context, fun() | Response) | Response {
+    return fun(ctx | Context, next | fun() | Response) | Response {
+        if (shouldSkipPath(config, ctx.request.path)) {
+            return next();
+        }
+
+        var requestId | string = getStateString(ctx, "requestId", "-");
+        var routePattern | string = getStateString(ctx, "routePattern", "-");
+        var startNs | int = getStateInt(ctx, "startNs", __builtin_time_now());
+        var clientIp | string = "-";
+        if (config.includeClientIp) {
+            clientIp = getStateString(ctx, "clientIp", "-");
+        }
+
+        var pathForLog | string = ctx.request.path;
+        if (config.includeQuery) {
+            pathForLog = ctx.request.fullPath;
+        }
+
+        if (config.emitStartLine) {
+            var startLine | string = "event=req_start level=${config.level} id=${requestId} ip=${clientIp} method=${ctx.request.method} route=${routePattern} path=${pathForLog}";
+            if (config.includeHeaders) {
+                startLine = startLine + " host=" + headerOrDash(ctx.request.headers, "Host");
+                startLine = startLine + " ua=" + quoteValue(headerOrDash(ctx.request.headers, "User-Agent"));
+                if (ctx.request.headers.has("Authorization")) {
+                    startLine = startLine + " auth=\"[REDACTED]\"";
+                }
+                if (ctx.request.headers.has("Cookie")) {
+                    startLine = startLine + " cookie=\"[REDACTED]\"";
+                }
+            }
+            if (config.includeCookies && ctx.request.headers.has("Cookie")) {
+                startLine = startLine + " has_cookie=true";
+            }
+            if (config.includeBodyBytes) {
+                startLine = startLine + " req_bytes=${len(ctx.request.body)}";
+            }
+            print(startLine);
+        }
+
+        try {
+            var resp | Response = next();
+            var endNs | int = __builtin_time_now();
+            var durationMs | int = (endNs - startNs) / 1000000;
+            if (durationMs < 0) {
+                durationMs = 0;
+            }
+            if (config.emitEndLine) {
+                var endLevel | string = levelForStatus(config.level, resp.status);
+                var endLine | string = "event=req_end level=${endLevel} id=${requestId} ip=${clientIp} method=${ctx.request.method} route=${routePattern} path=${pathForLog} status=${resp.status} duration_ms=${durationMs}";
+                if (config.includeBodyBytes) {
+                    endLine = endLine + " resp_bytes=${len(resp.body)}";
+                }
+                print(endLine);
+            }
+            return resp;
+        } catch (e | error) {
+            var errNs | int = __builtin_time_now();
+            var errDurationMs | int = (errNs - startNs) / 1000000;
+            if (errDurationMs < 0) {
+                errDurationMs = 0;
+            }
+            var errLine | string = "event=req_error level=error id=${requestId} ip=${clientIp} method=${ctx.request.method} route=${routePattern} path=${pathForLog} status=500 duration_ms=${errDurationMs} error=" + quoteValue(errorMessage(e));
+            print(errLine);
+            throw e;
+        }
+    };
+}
+
+pub fun loggerMiddleware(ctx | Context, next | fun() | Response) | Response {
+    var mw | fun(Context, fun() | Response) | Response = loggerWithConfig(defaultLoggerConfig());
+    return mw(ctx, next);
+}
+
+fun defaultLoggerConfig() | LoggerConfig {
+    return LoggerConfig{};
+}
+
+fun shouldSkipPath(config | LoggerConfig, path | string) | bool {
+    var i | int = 0;
+    while (i < config.skipPaths.length()) {
+        if (config.skipPaths.get(i) == path) {
+            return true;
+        }
+        i = i + 1;
+    }
+    return false;
+}
+
+fun getStateString(ctx | Context, key | string, fallback | string) | string {
+    if (ctx.state.has(key)) {
+        var v | string = ctx.state[key];
+        return v;
+    }
+    return fallback;
+}
+
+fun getStateInt(ctx | Context, key | string, fallback | int) | int {
+    if (ctx.state.has(key)) {
+        var v | int = ctx.state[key];
+        return v;
+    }
+    return fallback;
+}
+
+fun headerOrDash(headers | dict<string>, name | string) | string {
+    if (headers.has(name)) {
+        return headers[name];
+    }
+    return "-";
+}
+
+fun quoteValue(s | string) | string {
+    return "\"" + s.replace("\"", "'") + "\"";
+}
+
+fun levelForStatus(defaultLevel | string, status | int) | string {
+    if (status >= 500) {
+        return "error";
+    }
+    if (status >= 400) {
+        return "warn";
+    }
+    return defaultLevel;
+}

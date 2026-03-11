@@ -5519,3 +5519,99 @@ fun main() | int {
 		t.Fatalf("expected 21, got %v (%s)", val.Int, val.String())
 	}
 }
+
+func TestCompileWorld_CoolwebModule(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Symlink the real std/ directory so module loader can find std.coolweb and deps
+	realStd, err := filepath.Abs("../../std")
+	if err != nil {
+		t.Fatalf("failed to resolve std path: %v", err)
+	}
+	if _, err := os.Stat(realStd); os.IsNotExist(err) {
+		t.Skip("std/ directory not found, skipping coolweb integration test")
+	}
+	if err := os.Symlink(realStd, filepath.Join(tmpDir, "std")); err != nil {
+		t.Fatalf("failed to symlink std: %v", err)
+	}
+
+	mainFile := filepath.Join(tmpDir, "main.av")
+	mainContent := `pckg main;
+
+import std.coolweb;
+
+var app | coolweb.App = coolweb.newApp();
+
+@app.get("/")
+fun index(ctx | coolweb.Context) | coolweb.Response {
+    return ctx.text("hello");
+}
+
+@app.get("/users/:id")
+fun getUser(ctx | coolweb.Context) | coolweb.Response {
+    return ctx.json({ "id": ctx.params["id"] });
+}
+
+@app.post("/data")
+fun postData(ctx | coolweb.Context) | coolweb.Response {
+    return ctx.text("created", 201);
+}
+
+fun main() | int {
+    return 0;
+}
+`
+	if err := os.WriteFile(mainFile, []byte(mainContent), 0644); err != nil {
+		t.Fatalf("failed to write main.av: %v", err)
+	}
+
+	world, errs := modules.LoadWorld(mainFile)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("module loading error: %s", e)
+		}
+		t.Fatalf("failed to load world: %d errors", len(errs))
+	}
+
+	typeWorld := &types.World{
+		Modules: make(map[string]*types.ModuleInfo),
+		Entry:   world.Entry,
+	}
+	for modName, modAST := range world.Modules {
+		typeWorld.Modules[modName] = &types.ModuleInfo{
+			Name:  modName,
+			Prog:  modAST.Prog,
+			Scope: nil,
+		}
+	}
+
+	bindings, typeErrs := types.CheckWorldWithBindings(typeWorld)
+	if len(typeErrs) > 0 {
+		for _, e := range typeErrs {
+			t.Logf("type error: %s", e)
+		}
+		t.Fatalf("type checking failed: %d errors", len(typeErrs))
+	}
+
+	entryModInfo := typeWorld.Modules[world.Entry]
+	mod, errs := ir.CompileWorld(typeWorld, entryModInfo, bindings)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("compile error: %s", e)
+		}
+		t.Fatalf("compilation failed: %d errors", len(errs))
+	}
+
+	if mod == nil {
+		t.Fatalf("expected non-nil module")
+	}
+	if mod.MainIndex < 0 {
+		t.Fatalf("expected main function index >= 0")
+	}
+	if mod.InitIndex < 0 {
+		t.Fatalf("expected __init__ function (decorators present) but InitIndex = %d", mod.InitIndex)
+	}
+	if len(mod.Globals) < 1 {
+		t.Fatalf("expected at least 1 global (app), got %d", len(mod.Globals))
+	}
+}

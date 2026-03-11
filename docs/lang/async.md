@@ -20,6 +20,31 @@ async fun fetchData() | string {
 
 The declared return type is the *inner* type. The caller receives `Future<string>`, but `return` statements inside the function use the inner type directly.
 
+## Async Methods
+
+Methods can also be async. The return type wrapping works the same way:
+
+```avenir
+pub struct HttpClient {
+    base_url | string
+}
+
+pub async fun (client | HttpClient).get(path | string) | string {
+    var url | string = client.base_url + path;
+    return await asyncHttpGet(url);
+}
+
+// Usage
+var client | HttpClient = HttpClient{base_url = "https://api.example.com"};
+var data | Future<string> = client.get("/users");
+var result | string = await data;
+```
+
+Async methods follow the same rules as async functions:
+- Instance methods have the receiver as the first parameter (not wrapped in Future)
+- The return type is wrapped in `Future<T>`
+- `await` can be used inside async method bodies
+
 ## Future\<T\>
 
 `Future<T>` is a built-in generic type representing a value that will be available later. You can store futures in variables:

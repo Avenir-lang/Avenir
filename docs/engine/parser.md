@@ -42,12 +42,30 @@ Supported statements include:
 
 - Variable declarations: `var name | Type = expr;`
 - Assignments: `name = expr;`
+- Struct field assignments: `obj.field = expr;` and `obj.nested.field = expr;`
 - Expression statements
 - `if` / `else`
 - `while`
 - C‑style `for`
 - `for (item in list)` foreach
 - `return`
+
+## Member Access
+
+The parser supports chained member access in both expressions and assignments:
+
+```avenir
+// Expression chaining
+var result | string = obj.a.b.c();
+
+// Field assignment chaining
+obj.nested.field = value;
+```
+
+Chained access is handled in the statement postfix loop with a `Dot` case that
+continues parsing member expressions until a non-dot token is encountered.
+
+Additional statements:
 - `try` / `catch`
 - `throw`
 - `break`

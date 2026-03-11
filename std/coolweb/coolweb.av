@@ -1,0 +1,243 @@
+pckg std.coolweb;
+
+import std.http.server as http;
+
+struct coolweb {}
+
+pub mut struct App {
+    pub mut router | Router
+    pub mut middlewares | list<any>
+    pub mut errorHandler | fun(Context, error) | Response
+}
+
+pub fun newApp() | App {
+    return App{
+        router = newRouter(""),
+        middlewares = [],
+        errorHandler = defaultErrorHandler
+    };
+}
+
+pub fun (app | App).addRoute(method | string, path | string, handler | fun(Context) | Response) | void {
+    app.router.addRoute(method, path, handler);
+}
+
+pub fun (app | App).get(path | string) | fun(fun(Context) | Response) | fun(Context) | Response {
+    return fun(handler | fun(Context) | Response) | fun(Context) | Response {
+        app.addRoute("GET", path, handler);
+        return handler;
+    };
+}
+
+pub fun (app | App).post(path | string) | fun(fun(Context) | Response) | fun(Context) | Response {
+    return fun(handler | fun(Context) | Response) | fun(Context) | Response {
+        app.addRoute("POST", path, handler);
+        return handler;
+    };
+}
+
+pub fun (app | App).put(path | string) | fun(fun(Context) | Response) | fun(Context) | Response {
+    return fun(handler | fun(Context) | Response) | fun(Context) | Response {
+        app.addRoute("PUT", path, handler);
+        return handler;
+    };
+}
+
+pub fun (app | App).patch(path | string) | fun(fun(Context) | Response) | fun(Context) | Response {
+    return fun(handler | fun(Context) | Response) | fun(Context) | Response {
+        app.addRoute("PATCH", path, handler);
+        return handler;
+    };
+}
+
+pub fun (app | App).delete(path | string) | fun(fun(Context) | Response) | fun(Context) | Response {
+    return fun(handler | fun(Context) | Response) | fun(Context) | Response {
+        app.addRoute("DELETE", path, handler);
+        return handler;
+    };
+}
+
+pub fun (app | App).options(path | string) | fun(fun(Context) | Response) | fun(Context) | Response {
+    return fun(handler | fun(Context) | Response) | fun(Context) | Response {
+        app.addRoute("OPTIONS", path, handler);
+        return handler;
+    };
+}
+
+pub fun (app | App).use(mw | fun(Context, fun() | Response) | Response) | void {
+    app.middlewares = app.middlewares.append(mw);
+}
+
+pub fun (app | App).mount(child | Router) | void {
+    app.router.mount(child);
+}
+
+pub fun (app | App).onError(handler | fun(Context, error) | Response) | void {
+    app.errorHandler = handler;
+}
+
+pub async fun (app | App).run(port | int) | void {
+    var server | http.HttpServer = http.listen("0.0.0.0", port);
+    print("CoolWeb listening on :${port}");
+    while (true) {
+        var raw | dict<any> = await server.asyncAccept();
+        var _ | Future<void> = dispatchRequest(app, raw);
+    }
+}
+
+async fun dispatchRequest(app | App, raw | dict<any>) | void {
+    var startNs | int = __builtin_time_now();
+    var fullPath | string = raw["path"];
+    var pathStr | string = fullPath;
+    var queryStr | string = "";
+    var qIdx | int = fullPath.indexOf("?");
+    if (qIdx >= 0) {
+        var parts | list<string> = fullPath.split("?");
+        pathStr = parts.get(0);
+        if (parts.length() > 1) {
+            queryStr = parts.get(1);
+        }
+    }
+
+    var pathSegments | list<string> = splitPathStr(pathStr);
+    var method | string = raw["method"];
+
+    var matched | dict<any> = app.router.resolve(method, pathSegments);
+
+    var requestId | string = getOrCreateRequestId(raw);
+    var clientIp | string = extractClientIp(raw);
+
+    var req | Request = Request{
+        method = method,
+        path = pathStr,
+        fullPath = fullPath,
+        headers = raw["headers"],
+        body = raw["body"]
+    };
+
+    var params | dict<string> = {};
+    if (matched["found"] == true) {
+        params = matched["params"];
+    }
+
+    var ctx | Context = Context{
+        request = req,
+        params = params,
+        query = parseQueryString(queryStr),
+        cookies = parseCookieHeader(raw["headers"]),
+        state = {},
+        _connHandle = raw["__handle"]
+    };
+
+    ctx.state.set("requestId", requestId);
+    ctx.state.set("startNs", startNs);
+    ctx.state.set("clientIp", clientIp);
+    if (matched["found"] == true) {
+        ctx.state.set("routePattern", matched["pattern"]);
+    } else {
+        ctx.state.set("routePattern", "-");
+    }
+
+    var resp | Response = textResponse("Internal Server Error", 500);
+
+    if (matched["found"] == true) {
+        var handler | fun(Context) | Response = matched["handler"];
+        var routeMiddlewares | list<any> = matched["middlewares"];
+        var allMiddlewares | list<any> = concatMiddlewares(app.middlewares, routeMiddlewares);
+        try {
+            resp = executeChain(allMiddlewares, handler, ctx);
+        } catch (e | error) {
+            var durationMs | int = (__builtin_time_now() - startNs) / 1000000;
+            if (durationMs < 0) {
+                durationMs = 0;
+            }
+            var routePattern | string = matched["pattern"];
+            print("event=dispatch_error level=error id=${requestId} ip=${clientIp} method=${method} route=${routePattern} path=${fullPath} status=500 duration_ms=${durationMs} error=\"" + errorMessage(e).replace("\"", "'") + "\"");
+            resp = app.errorHandler(ctx, e);
+        }
+    } else {
+        resp = textResponse("404 Not Found", 404);
+    }
+
+    if (!resp.headers.has("X-Request-Id")) {
+        resp.headers.set("X-Request-Id", requestId);
+    }
+
+    await http.rawRespond(ctx._connHandle, resp.status, resp.headers, resp.body);
+}
+
+fun getOrCreateRequestId(raw | dict<any>) | string {
+    var headers | dict<string> = raw["headers"];
+    if (headers.has("X-Request-Id")) {
+        var existing | string = headers["X-Request-Id"];
+        if (existing != "") {
+            return existing;
+        }
+    }
+    var ts | int = __builtin_time_now();
+    var rnd | int = ts % 1000000;
+    return "req-${ts}-${rnd}";
+}
+
+fun extractClientIp(raw | dict<any>) | string {
+    var headers | dict<string> = raw["headers"];
+    if (headers.has("X-Forwarded-For")) {
+        var forwarded | string = headers["X-Forwarded-For"];
+        if (forwarded != "") {
+            var items | list<string> = forwarded.split(",");
+            if (items.length() > 0) {
+                var firstRaw | string = items.get(0);
+                return firstRaw.trim();
+            }
+        }
+    }
+    if (headers.has("X-Real-IP")) {
+        var realIp | string = headers["X-Real-IP"];
+        if (realIp != "") {
+            return realIp;
+        }
+    }
+    if (raw.has("remote_addr")) {
+        var remoteAddr | string = raw["remote_addr"];
+        if (remoteAddr != "") {
+            return normalizeClientIp(remoteAddr);
+        }
+    }
+    return "-";
+}
+
+fun normalizeClientIp(remoteAddr | string) | string {
+    var parts | list<string> = remoteAddr.split(":");
+    if (parts.length() == 2) {
+        return parts.get(0);
+    }
+    return remoteAddr;
+}
+
+fun splitPathStr(path | string) | list<string> {
+    var parts | list<string> = path.split("/");
+    var result | list<string> = [];
+    var i | int = 0;
+    while (i < parts.length()) {
+        var part | string = parts.get(i);
+        if (part != "") {
+            result = result.append(part);
+        }
+        i = i + 1;
+    }
+    return result;
+}
+
+fun concatMiddlewares(a | list<any>, b | list<any>) | list<any> {
+    var result | list<any> = a.copy();
+    var i | int = 0;
+    while (i < b.length()) {
+        result = result.append(b.get(i));
+        i = i + 1;
+    }
+    return result;
+}
+
+fun defaultErrorHandler(ctx | Context, e | error) | Response {
+    return textResponse("Internal Server Error", 500);
+}

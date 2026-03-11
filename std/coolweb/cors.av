@@ -1,0 +1,55 @@
+pckg std.coolweb;
+
+struct cors {}
+
+pub struct CorsConfig {
+    pub allowOrigins | list<string> = ["*"]
+    pub allowMethods | list<string> = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    pub allowHeaders | list<string> = ["Content-Type", "Authorization"]
+    pub allowCredentials | bool = false
+    pub maxAge | int = 86400
+}
+
+pub fun corsMiddleware(config | CorsConfig) | fun(Context, fun() | Response) | Response {
+    return fun(ctx | Context, next | fun() | Response) | Response {
+        var origin | string = "*";
+        if (config.allowOrigins.length() > 0) {
+            origin = config.allowOrigins.get(0);
+        }
+        var methods | string = joinList(config.allowMethods, ", ");
+        var headers | string = joinList(config.allowHeaders, ", ");
+
+        if (ctx.request.method == "OPTIONS") {
+            var resp | Response = textResponse("", 204);
+            resp.headers.set("Access-Control-Allow-Origin", origin);
+            resp.headers.set("Access-Control-Allow-Methods", methods);
+            resp.headers.set("Access-Control-Allow-Headers", headers);
+            resp.headers.set("Access-Control-Max-Age", "${config.maxAge}");
+            if (config.allowCredentials) {
+                resp.headers.set("Access-Control-Allow-Credentials", "true");
+            }
+            return resp;
+        }
+
+        var resp | Response = next();
+        resp.headers.set("Access-Control-Allow-Origin", origin);
+        if (config.allowCredentials) {
+            resp.headers.set("Access-Control-Allow-Credentials", "true");
+        }
+        return resp;
+    };
+}
+
+fun joinList(items | list<string>, sep | string) | string {
+    var result | string = "";
+    var i | int = 0;
+    while (i < items.length()) {
+        if (i > 0) {
+            result = result + sep;
+        }
+        var item | string = items.get(i);
+        result = result + item;
+        i = i + 1;
+    }
+    return result;
+}

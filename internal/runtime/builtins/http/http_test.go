@@ -107,6 +107,10 @@ func TestHTTPServerBuiltins(t *testing.T) {
 			t.Errorf("expected path /ping, got %q", req.Dict["path"].Str)
 			return
 		}
+		if req.Dict["remote_addr"].Kind != value.KindString || req.Dict["remote_addr"].Str == "" {
+			t.Errorf("expected non-empty remote_addr")
+			return
+		}
 		headers := value.Dict(map[string]value.Value{
 			"Content-Type": value.Str("text/plain"),
 		})
@@ -144,4 +148,3 @@ func pickFreePort(t *testing.T) int {
 	ln.Close()
 	return port
 }
-

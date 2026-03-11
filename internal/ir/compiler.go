@@ -187,14 +187,14 @@ func CompileWorld(world *types.World, entryMod *types.ModuleInfo, bindings *type
 	structIndex := make(map[string]int)
 	idx := 0
 	for _, modInfo := range world.Modules {
-		// Look up struct types from the module's scope
 		if modInfo.Scope != nil {
 			for _, st := range modInfo.Prog.Structs {
-				// Skip generic struct declarations
 				if len(st.TypeParams) > 0 {
 					continue
 				}
-				// Look up the struct type symbol
+				if _, exists := structIndex[st.Name]; exists {
+					continue
+				}
 				sym := modInfo.Scope.Lookup(st.Name)
 				if sym != nil && sym.Kind == types.SymType {
 					if structType, ok := sym.Type.(*types.Struct); ok {
@@ -2204,13 +2204,17 @@ func (fc *funcCompiler) compileCall(call *ast.CallExpr) {
 				}
 			}
 
-			// Check if it's a module function
+			// Check if it's a module function or user-defined method
 			if sym, ok := fc.c.bindings.Members[cal]; ok && sym.Kind == types.SymFunc {
 				if decl, ok2 := sym.Node.(*ast.FunDecl); ok2 {
 					if idx, ok3 := fc.c.funcIndex[decl]; ok3 {
 						fnDecl = decl
 						fnIndex = idx
 						hasFn = true
+						if decl.Receiver != nil && decl.Receiver.Kind == ast.ReceiverInstance {
+							isMethodCall = true
+							receiverExpr = cal.X
+						}
 					}
 				}
 			}

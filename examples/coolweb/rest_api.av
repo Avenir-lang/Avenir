@@ -1,0 +1,26 @@
+pckg main;
+
+import std.coolweb;
+
+var app | coolweb.App = coolweb.newApp();
+
+@app.get("/users")
+fun listUsers(ctx | coolweb.Context) | coolweb.Response {
+    return ctx.json([{ "id": 1, "name": "Alice" }, { "id": 2, "name": "Bob" }]);
+}
+
+@app.get("/users/:id")
+fun getUser(ctx | coolweb.Context) | coolweb.Response {
+    var id | string = ctx.params["id"];
+    return ctx.json({ "id": id, "name": "Alice" });
+}
+
+@app.post("/users")
+fun createUser(ctx | coolweb.Context) | coolweb.Response {
+    var body | any = ctx.jsonBody();
+    return ctx.json(body, 201);
+}
+
+async fun main() | void {
+    await app.run(8080);
+}

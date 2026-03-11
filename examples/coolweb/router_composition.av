@@ -1,0 +1,31 @@
+pckg main;
+
+import std.coolweb;
+
+var app | coolweb.App = coolweb.newApp();
+var users | coolweb.Router = coolweb.newRouter("/users");
+var posts | coolweb.Router = coolweb.newRouter("/posts");
+
+@users.get("/")
+fun listUsers(ctx | coolweb.Context) | coolweb.Response {
+    return ctx.json([]);
+}
+
+@users.get("/:id")
+fun getUser(ctx | coolweb.Context) | coolweb.Response {
+    return ctx.json({ "id": ctx.params["id"] });
+}
+
+@posts.get("/")
+fun listPosts(ctx | coolweb.Context) | coolweb.Response {
+    return ctx.json([]);
+}
+
+async fun main() | void {
+    var api | coolweb.Router = coolweb.newRouter("/api");
+    api.mount(users);
+    api.mount(posts);
+    app.use(coolweb.loggerMiddleware);
+    app.mount(api);
+    await app.run(8080);
+}

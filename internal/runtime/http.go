@@ -25,6 +25,7 @@ type httpRequest struct {
 	conn       net.Conn
 	method     string
 	path       string
+	remoteAddr string
 	headers    map[string]string
 	body       []byte
 	protoMajor int
@@ -128,6 +129,7 @@ func (h *httpService) Accept(serverHandle []byte) (*builtins.HTTPRequestData, er
 		conn:       conn,
 		method:     req.Method,
 		path:       path,
+		remoteAddr: conn.RemoteAddr().String(),
 		headers:    headers,
 		body:       body,
 		protoMajor: req.ProtoMajor,
@@ -135,11 +137,12 @@ func (h *httpService) Accept(serverHandle []byte) (*builtins.HTTPRequestData, er
 	}
 	h.mu.Unlock()
 	return &builtins.HTTPRequestData{
-		Handle:  encodeHandle(reqID),
-		Method:  req.Method,
-		Path:    path,
-		Headers: headers,
-		Body:    body,
+		Handle:     encodeHandle(reqID),
+		Method:     req.Method,
+		Path:       path,
+		RemoteAddr: conn.RemoteAddr().String(),
+		Headers:    headers,
+		Body:       body,
 	}, nil
 }
 
@@ -162,12 +165,12 @@ func (h *httpService) Respond(reqHandle []byte, status int, headers map[string]s
 		respHeaders.Set(k, v)
 	}
 	resp := &http.Response{
-		StatusCode: status,
-		Status:     fmt.Sprintf("%d %s", status, http.StatusText(status)),
-		ProtoMajor: req.protoMajor,
-		ProtoMinor: req.protoMinor,
-		Header:     respHeaders,
-		Body:       io.NopCloser(bytes.NewReader(body)),
+		StatusCode:    status,
+		Status:        fmt.Sprintf("%d %s", status, http.StatusText(status)),
+		ProtoMajor:    req.protoMajor,
+		ProtoMinor:    req.protoMinor,
+		Header:        respHeaders,
+		Body:          io.NopCloser(bytes.NewReader(body)),
 		ContentLength: int64(len(body)),
 		Close:         true,
 	}

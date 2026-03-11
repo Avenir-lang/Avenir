@@ -69,6 +69,15 @@ var mixed | <int|string> = 1;
 `fun(T1, T2) | R` for first‑class functions. Parameter and return types are
 structural for equivalence.
 
+### Methods
+
+Instance methods are stored with their `FunDecl` in the `Method.Decl` field. This enables:
+- Default parameter handling for method calls
+- Proper receiver parameter tracking in the resolver
+- Correct IR compilation of method invocations
+
+Static methods are handled as regular functions with a static receiver.
+
 ### Future Types (Async)
 
 The checker models async return values with `Future<T>`:
@@ -108,14 +117,17 @@ path into scope during import processing.
 
 ## Checker Flow
 
-High‑level flow (simplified):
+High‑level flow for multi‑module worlds:
 
-1. Declare builtins from `internal/runtime/builtins`.
-2. Load modules and merge multi‑file programs.
-3. Declare types (structs, interfaces).
-4. Declare functions and methods.
-5. Type‑check all statements and expressions.
-6. Produce `Bindings` metadata for IR compilation.
+**Phase 1a**: Create scopes and register builtins for each module. Forward‑declare struct names (no fields yet).
+
+**Phase 1b**: Process imports so cross‑module types are available when resolving function parameters and struct fields.
+
+**Phase 1c**: Resolve struct fields, declare interfaces, register functions and methods with their full types, register top‑level variables.
+
+**Phase 2**: Full type‑checking of all statements and expressions, including function bodies, with access to all imported symbols.
+
+**Phase 3**: Produce `Bindings` metadata for IR compilation.
 
 For generics, declaration and checking include additional steps:
 

@@ -1,0 +1,15 @@
+pckg std.coolweb;
+
+struct errors {}
+
+pub fun notFoundError() | error {
+    return error("coolweb: 404 not found");
+}
+
+pub fun methodNotAllowedError() | error {
+    return error("coolweb: 405 method not allowed");
+}
+
+pub fun internalError(msg | string) | error {
+    return error("coolweb: internal error: " + msg);
+}
