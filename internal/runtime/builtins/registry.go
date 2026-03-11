@@ -157,6 +157,20 @@ const (
 	TimeHour
 	TimeMinute
 	TimeSecond
+	CryptoSHA256
+	CryptoSHA512
+	CryptoHMACSHA256
+	CryptoHMACSHA256Verify
+	CryptoBase64URLEncode
+	CryptoBase64URLDecode
+	CryptoJWTSignHS256
+	CryptoJWTVerifyHS256
+	CryptoJWTSignRS256
+	CryptoJWTVerifyRS256
+	CryptoJWTSignES256
+	CryptoJWTVerifyES256
+	CryptoPasswordHash
+	CryptoPasswordVerify
 
 	// Async builtins
 	AsyncTimeSleep

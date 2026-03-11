@@ -7,6 +7,7 @@ import (
 	// Import all builtin packages to trigger their init() functions for self-registration
 	_ "avenir/internal/runtime/builtins/bytes"
 	_ "avenir/internal/runtime/builtins/collections"
+	_ "avenir/internal/runtime/builtins/crypto"
 	_ "avenir/internal/runtime/builtins/dict"
 	_ "avenir/internal/runtime/builtins/errors"
 	_ "avenir/internal/runtime/builtins/fs"

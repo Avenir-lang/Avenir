@@ -1,0 +1,37 @@
+pckg std.crypto.jwt;
+
+pub fun signHS256(payload | dict<any>, secret | bytes) | string {
+    return __builtin_crypto_jwt_sign_hs256({}, payload, secret);
+}
+
+pub fun verifyHS256(token | string, secret | bytes) | dict<any> {
+    return verifyHS256At(token, secret, __builtin_time_now());
+}
+
+pub fun verifyHS256At(token | string, secret | bytes, nowUnixSeconds | int) | dict<any> {
+    return __builtin_crypto_jwt_verify_hs256(token, secret, nowUnixSeconds);
+}
+
+pub fun signRS256(payload | dict<any>, privateKeyPem | bytes) | string {
+    return __builtin_crypto_jwt_sign_rs256({}, payload, privateKeyPem);
+}
+
+pub fun verifyRS256(token | string, publicKeyPem | bytes) | dict<any> {
+    return verifyRS256At(token, publicKeyPem, __builtin_time_now());
+}
+
+pub fun verifyRS256At(token | string, publicKeyPem | bytes, nowUnixSeconds | int) | dict<any> {
+    return __builtin_crypto_jwt_verify_rs256(token, publicKeyPem, nowUnixSeconds);
+}
+
+pub fun signES256(payload | dict<any>, privateKeyPem | bytes) | string {
+    return __builtin_crypto_jwt_sign_es256({}, payload, privateKeyPem);
+}
+
+pub fun verifyES256(token | string, publicKeyPem | bytes) | dict<any> {
+    return verifyES256At(token, publicKeyPem, __builtin_time_now());
+}
+
+pub fun verifyES256At(token | string, publicKeyPem | bytes, nowUnixSeconds | int) | dict<any> {
+    return __builtin_crypto_jwt_verify_es256(token, publicKeyPem, nowUnixSeconds);
+}

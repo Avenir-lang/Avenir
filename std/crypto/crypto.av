@@ -1,0 +1,27 @@
+pckg std.crypto;
+
+struct crypto {}
+
+pub fun sha256(data | bytes) | bytes {
+    return __builtin_crypto_sha256(data);
+}
+
+pub fun sha512(data | bytes) | bytes {
+    return __builtin_crypto_sha512(data);
+}
+
+pub fun hmacSha256(key | bytes, data | bytes) | bytes {
+    return __builtin_crypto_hmac_sha256(key, data);
+}
+
+pub fun verifyHmacSha256(key | bytes, data | bytes, signature | bytes) | bool {
+    return __builtin_crypto_hmac_sha256_verify(key, data, signature);
+}
+
+pub fun base64UrlEncode(data | bytes) | string {
+    return __builtin_crypto_base64url_encode(data);
+}
+
+pub fun base64UrlDecode(text | string) | bytes {
+    return __builtin_crypto_base64url_decode(text);
+}

@@ -1,0 +1,35 @@
+pckg main;
+
+import std.crypto.jwt as jwt;
+import std.json as json;
+
+fun main() | void {
+    var now | int = __builtin_time_now();
+
+    var payload | dict<any> = {
+        sub: "user-42",
+        role: "admin",
+        exp: now + 120000000000,
+        iat: now
+    };
+
+    var secret | bytes = fromString("super-secret-key");
+    var token | string = jwt.signHS256(payload, secret);
+    print("token: " + token);
+
+    var status | dict<any> = jwt.verifyHS256(token, secret);
+    if (json.asBool(status["valid"])) {
+        var data | dict<any> = json.asDict(status["payload"]);
+        var sub | string = json.asString(data["sub"]);
+        var role | string = json.asString(data["role"]);
+        print("valid=true sub=" + sub + " role=" + role);
+    } else {
+        var reason | string = json.asString(status["reason"]);
+        var errText | string = json.asString(status["error"]);
+        print("valid=false reason=" + reason + " error=" + errText);
+    }
+
+    var bad | dict<any> = jwt.verifyHS256(token, fromString("wrong-secret"));
+    var badValid | bool = json.asBool(bad["valid"]);
+    print("wrong secret valid=${badValid}");
+}
