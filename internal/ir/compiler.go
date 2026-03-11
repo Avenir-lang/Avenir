@@ -96,7 +96,7 @@ func CompileWorld(world *types.World, entryMod *types.ModuleInfo, bindings *type
 		}
 	}
 
-	mod := &Module{MainIndex: -1}
+	mod := &Module{MainIndex: -1, InitIndex: -1}
 	funcIndexByDecl := make(map[*ast.FunDecl]int)
 	funcIndexByLiteral := make(map[*ast.FuncLiteral]int)
 	allFuncNodes := []ast.Node{}
@@ -289,8 +289,8 @@ func CompileWorld(world *types.World, entryMod *types.ModuleInfo, bindings *type
 		}
 	}
 
-	// Apply decorator wrapping
-	c.applyDecoratorWrapping(bindings, funcIndexByDecl)
+	// Generate __init__ function for decorator application
+	c.generateInitFunc(bindings, funcIndexByDecl)
 
 	if len(c.errors) > 0 {
 		return nil, c.errors
@@ -601,9 +601,23 @@ func (c *Compiler) addError(pos token.Position, format string, args ...interface
 	c.errors = append(c.errors, fmt.Errorf("%s", msg))
 }
 
-func (c *Compiler) applyDecoratorWrapping(bindings *types.Bindings, funcIndexByDecl map[*ast.FunDecl]int) {
+func (c *Compiler) generateInitFunc(bindings *types.Bindings, funcIndexByDecl map[*ast.FunDecl]int) {
 	if bindings == nil || len(bindings.Decorators) == 0 {
 		return
+	}
+
+	initFn := &Function{
+		Name:  "__init__",
+		Chunk: Chunk{},
+	}
+	initIdx := len(c.mod.Functions)
+	c.mod.Functions = append(c.mod.Functions, initFn)
+
+	fc := &funcCompiler{
+		c:     c,
+		fn:    initFn,
+		chunk: &initFn.Chunk,
+		scope: newLocalScope(nil),
 	}
 
 	for fn, infos := range bindings.Decorators {
@@ -611,70 +625,20 @@ func (c *Compiler) applyDecoratorWrapping(bindings *types.Bindings, funcIndexByD
 		if !ok {
 			continue
 		}
-		origFn := c.mod.Functions[origIdx]
 
-		bodyFn := &Function{
-			Name:      origFn.Name + "$body",
-			NumParams: origFn.NumParams,
-			Chunk: Chunk{
-				Code:      append([]Instruction(nil), origFn.Chunk.Code...),
-				Consts:    append([]Constant(nil), origFn.Chunk.Consts...),
-				NumLocals: origFn.Chunk.NumLocals,
-			},
-			Upvalues: origFn.Upvalues,
-			IsAsync:  origFn.IsAsync,
-		}
-		bodyIdx := len(c.mod.Functions)
-		c.mod.Functions = append(c.mod.Functions, bodyFn)
-
-		decoratorIndices := make([]int, len(infos))
-		allFound := true
-		for i, info := range infos {
-			idx := c.findFuncIndexByName(info.Name, funcIndexByDecl)
-			if idx < 0 {
-				c.addError(fn.NamePos, "decorator function %q not found in module", info.Name)
-				allFound = false
-				break
-			}
-			decoratorIndices[i] = idx
-		}
-		if !allFound {
-			continue
-		}
-
-		wrapperSlot := origFn.NumParams
-		origFn.Chunk = Chunk{NumLocals: origFn.NumParams + 1}
-
-		origFn.Chunk.Emit(OpClosure, bodyIdx, 0)
+		fc.chunk.Emit(OpClosure, origIdx, 0)
 
 		for i := len(infos) - 1; i >= 0; i-- {
-			if infos[i].Args == nil {
-				origFn.Chunk.Emit(OpCall, decoratorIndices[i], 1)
-			} else {
-				origFn.Chunk.Emit(OpCall, decoratorIndices[i], 1)
-			}
+			fc.compileExpr(infos[i].Expr)
+			fc.chunk.Emit(OpCallValue, 1, 0)
 		}
 
-		origFn.Chunk.Emit(OpStoreLocal, wrapperSlot, 0)
-		origFn.Chunk.Emit(OpPop, 0, 0)
-
-		for i := 0; i < origFn.NumParams; i++ {
-			origFn.Chunk.Emit(OpLoadLocal, i, 0)
-		}
-
-		origFn.Chunk.Emit(OpLoadLocal, wrapperSlot, 0)
-		origFn.Chunk.Emit(OpCallValue, origFn.NumParams, 0)
-		origFn.Chunk.Emit(OpReturn, 0, 1)
+		fc.chunk.Emit(OpSetFunc, origIdx, 0)
 	}
-}
 
-func (c *Compiler) findFuncIndexByName(name string, funcIndexByDecl map[*ast.FunDecl]int) int {
-	for decl, idx := range funcIndexByDecl {
-		if decl.Name == name {
-			return idx
-		}
-	}
-	return -1
+	fc.chunk.Emit(OpReturn, 0, 0)
+	initFn.Chunk.NumLocals = fc.nextLocal
+	c.mod.InitIndex = initIdx
 }
 
 // ---------- Local scopes for local variables ----------

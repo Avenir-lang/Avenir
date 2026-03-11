@@ -6,12 +6,151 @@ fun doubler(f | fun(int, int) | int) | fun(int, int) | int {
     };
 }
 
+fun negator(f | fun(int, int) | int) | fun(int, int) | int {
+    return fun(a | int, b | int) | int {
+        return 0 - f(a, b);
+    };
+}
+
+fun multiplier(factor | int) | fun(fun(int) | int) | fun(int) | int {
+    return fun(f | fun(int) | int) | fun(int) | int {
+        return fun(x | int) | int {
+            return f(x) * factor;
+        };
+    };
+}
+
+fun wrap<R, ...Args>(f | fun(Args...) | R) | fun(Args...) | R {
+    return f;
+}
+
+fun int_identity(f | fun(int) | int) | fun(int) | int {
+    return f;
+}
+
+fun bool_identity(f | fun(int) | bool) | fun(int) | bool {
+    return f;
+}
+
+fun around_void(f | fun() | void) | fun() | void {
+    return fun() | void {
+        print("before call");
+        f();
+        print("after call");
+    };
+}
+
+fun method_multiplier(factor | int) | fun(fun(decorators, int) | int) | fun(decorators, int) | int {
+    return fun(f | fun(decorators, int) | int) | fun(decorators, int) | int {
+        return fun(self | decorators, x | int) | int {
+            return f(self, x) * factor;
+        };
+    };
+}
+
+fun method_doubler(f | fun(decorators, int, int) | int) | fun(decorators, int, int) | int {
+    return fun(self | decorators, a | int, b | int) | int {
+        return f(self, a, b) * 2;
+    };
+}
+
+fun method_negator(f | fun(decorators, int, int) | int) | fun(decorators, int, int) | int {
+    return fun(self | decorators, a | int, b | int) | int {
+        return 0 - f(self, a, b);
+    };
+}
+
+struct MathDec {
+}
+
+fun MathDec.bump(f | fun(int) | int) | fun(int) | int {
+    return fun(x | int) | int {
+        return f(x) + 1;
+    };
+}
+
+struct decorators {
+    base | int
+}
+
+@method_multiplier(2)
+fun (self | decorators).square_plus_base(x | int) | int {
+    return x * x + self.base;
+}
+
+@method_negator
+@method_doubler
+fun (self | decorators).delta(a | int, b | int) | int {
+    return a - b + self.base;
+}
+
 @doubler
 fun add(a | int, b | int) | int {
     return a + b;
 }
 
+@negator
+@doubler
+fun sub(a | int, b | int) | int {
+    return a - b;
+}
+
+@multiplier(10)
+fun square(x | int) | int {
+    return x * x;
+}
+
+@MathDec.bump
+fun square_plus_one(x | int) | int {
+    return x * x;
+}
+
+@int_identity
+fun abs_like(x | int) | int {
+    if (x < 0) {
+        return 0 - x;
+    }
+    return x;
+}
+
+@bool_identity
+fun is_positive(x | int) | bool {
+    return x > 0;
+}
+
+@around_void
+fun announce() | void {
+    print("inside announce");
+}
+
+
+
 fun main() | void {
-    var result | int = add(3, 4);
-    print("add(3, 4) with @doubler = ${result}");
+    var r1 | int = add(3, 4);
+    print("@doubler add(3, 4) = ${r1}");
+
+    var r2 | int = sub(10, 3);
+    print("@negator @doubler sub(10, 3) = ${r2}");
+
+    var r3 | int = square(5);
+    print("@multiplier(10) square(5) = ${r3}");
+
+    var calc | decorators = decorators{base = 1};
+
+    var r4 | int = calc.square_plus_base(3);
+    print("@method_multiplier(2) instance method square_plus_base(3) = ${r4}");
+
+    var r5 | int = calc.delta(10, 3);
+    print("@method_negator @method_doubler instance method delta(10, 3) = ${r5}");
+
+    var r6 | int = square_plus_one(4);
+    print("@MathDec.bump square_plus_one(4) = ${r6}");
+
+    var r7 | int = abs_like(-7);
+    print("@int_identity abs_like(-7) = ${r7}");
+
+    var r8 | bool = is_positive(-2);
+    print("@bool_identity is_positive(-2) = ${r8}");
+
+    announce();
 }

@@ -968,11 +968,12 @@ fun main() | int {
 	if len(addFn.Decorators) != 1 {
 		t.Fatalf("expected 1 decorator, got %d", len(addFn.Decorators))
 	}
-	if addFn.Decorators[0].Name != "log" {
-		t.Fatalf("expected decorator 'log', got %q", addFn.Decorators[0].Name)
+	ident, ok := addFn.Decorators[0].Expr.(*ast.IdentExpr)
+	if !ok {
+		t.Fatalf("expected decorator expr to be *ast.IdentExpr, got %T", addFn.Decorators[0].Expr)
 	}
-	if len(addFn.Decorators[0].Args) != 0 {
-		t.Fatalf("expected 0 decorator args, got %d", len(addFn.Decorators[0].Args))
+	if ident.Name != "log" {
+		t.Fatalf("expected decorator 'log', got %q", ident.Name)
 	}
 }
 
@@ -1011,11 +1012,19 @@ fun main() | int {
 		t.Fatalf("expected 1 decorator, got %d", len(computeFn.Decorators))
 	}
 	dec := computeFn.Decorators[0]
-	if dec.Name != "cache" {
-		t.Fatalf("expected decorator 'cache', got %q", dec.Name)
+	callExpr, ok := dec.Expr.(*ast.CallExpr)
+	if !ok {
+		t.Fatalf("expected decorator expr to be *ast.CallExpr, got %T", dec.Expr)
 	}
-	if len(dec.Args) != 1 {
-		t.Fatalf("expected 1 decorator arg, got %d", len(dec.Args))
+	callee, ok := callExpr.Callee.(*ast.IdentExpr)
+	if !ok {
+		t.Fatalf("expected callee to be *ast.IdentExpr, got %T", callExpr.Callee)
+	}
+	if callee.Name != "cache" {
+		t.Fatalf("expected decorator callee 'cache', got %q", callee.Name)
+	}
+	if len(callExpr.Args) != 1 {
+		t.Fatalf("expected 1 decorator arg, got %d", len(callExpr.Args))
 	}
 }
 

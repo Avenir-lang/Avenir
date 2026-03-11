@@ -97,7 +97,7 @@ fun print_hello() | void {
 
 ## Decorators
 
-Decorators allow wrapping functions with additional behavior using the `@` syntax:
+Decorators allow wrapping functions with additional behavior using the `@<expr>` syntax:
 
 ```avenir
 @log
@@ -106,7 +106,9 @@ fun add(a | int, b | int) | int {
 }
 ```
 
-A decorator is a function that takes a function as its argument and returns a function of the same type. The above is equivalent to `add = log(add)`.
+A decorator is any expression that evaluates to a function taking a function as its argument and returning a function of the same type. The above is equivalent to `add = log(add)`.
+
+Decorators are applied **once at module initialization**, not on every function call. This means decorated functions have **zero runtime overhead** — the original function slot is permanently replaced with the decorated version before `main` executes.
 
 ### Decorator Requirements
 
@@ -144,14 +146,26 @@ Here `cache(60)` is called first, and the returned function is used as the decor
 
 ### Decorators and Methods
 
-Decorators work with both instance methods and static methods:
+Decorators work with both instance methods and static methods.
+
+For instance methods, the method type includes the receiver as the first parameter.
+So the decorator must accept and return that full function type:
 
 ```avenir
-// Instance method with decorator
-@log
-fun (self | Point).move(dx | int, dy | int) | void {
-    self.x = self.x + dx;
-    self.y = self.y + dy;
+struct Point {
+    x | int
+    y | int
+}
+
+fun method_doubler(f | fun(Point, int, int) | int) | fun(Point, int, int) | int {
+    return fun(self | Point, dx | int, dy | int) | int {
+        return f(self, dx, dy) * 2;
+    };
+}
+
+@method_doubler
+fun (self | Point).move_score(dx | int, dy | int) | int {
+    return self.x + self.y + dx + dy;
 }
 
 // Static method with decorator
@@ -167,22 +181,23 @@ Static methods can be used as decorators since they are statically accessible:
 
 ```avenir
 struct Logger {
-    fun log(f | fun() | void) | fun() | void {
-        return fun() | void {
-            print("Starting function");
-            f();
-            print("Function completed");
-        };
-    }
-    
-    fun validate(f | fun(int) | int) | fun(int) | int {
-        return fun(x | int) | int {
-            if x < 0 {
-                print("Warning: negative input");
-            }
-            return f(x);
-        };
-    }
+}
+
+fun Logger.log(f | fun() | void) | fun() | void {
+    return fun() | void {
+        print("Starting function");
+        f();
+        print("Function completed");
+    };
+}
+
+fun Logger.validate(f | fun(int) | int) | fun(int) | int {
+    return fun(x | int) | int {
+        if x < 0 {
+            print("Warning: negative input");
+        }
+        return f(x);
+    };
 }
 
 // Using static methods as decorators
@@ -197,7 +212,10 @@ fun process(x | int) | int {
 }
 ```
 
-**Note:** Only static methods can be used as decorators. Instance methods cannot be decorators because they require a specific instance, which is not available at compile time.
+**Note:** Since decorators are arbitrary expressions, any expression that evaluates to a decorator function can be used, including static method access like `Logger.log`. Instance methods cannot be decorators because they require a specific instance.
+
+**Note:** Decorated methods are declared at top level with receiver syntax (`fun (self | T).name(...) ...`).
+They are not declared inside the `struct { ... }` field block.
 
 ### Multiple Decorators
 
@@ -223,6 +241,22 @@ fun wrap<R, ...Args>(f | fun(Args...) | R) | fun(Args...) | R {
 ```
 
 When applied to a function, the type arguments are inferred automatically from the decorated function's signature.
+
+Usage:
+
+```avenir
+@wrap
+fun add(a | int, b | int) | int {
+    return a + b;
+}
+
+@wrap
+fun greet(name | string, times | int) | string {
+    return "hello";
+}
+```
+
+In these examples, `wrap` is instantiated with different `(R, Args...)` based on each decorated function.
 
 ## Variadic Generics
 

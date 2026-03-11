@@ -166,37 +166,16 @@ func (p *Parser) parseDecorator() *ast.Decorator {
 	atPos := p.cur.Pos
 	p.nextToken() // consume '@'
 
-	if p.cur.Kind != token.Ident {
-		p.errorf(p.cur.Pos, "expected decorator name after '@'")
+	expr := p.parseExpr()
+	if expr == nil {
+		p.errorf(atPos, "expected expression after '@'")
 		return nil
 	}
 
-	dec := &ast.Decorator{
-		AtPos:   atPos,
-		Name:    p.cur.Lexeme,
-		NamePos: p.cur.Pos,
+	return &ast.Decorator{
+		AtPos: atPos,
+		Expr:  expr,
 	}
-	p.nextToken() // consume name
-
-	if p.cur.Kind == token.LParen {
-		dec.LParen = p.cur.Pos
-		p.nextToken() // consume '('
-		if p.cur.Kind != token.RParen {
-			for {
-				arg := p.parseExpr()
-				dec.Args = append(dec.Args, arg)
-				if p.cur.Kind == token.Comma {
-					p.nextToken()
-					continue
-				}
-				break
-			}
-		}
-		dec.RParen = p.cur.Pos
-		p.expect(token.RParen)
-	}
-
-	return dec
 }
 
 func (p *Parser) parseTypeParams() []*ast.TypeParam {

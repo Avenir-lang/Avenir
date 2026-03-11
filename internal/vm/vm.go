@@ -60,6 +60,8 @@ type VM struct {
 	env      *runtime.Env
 	handlers []exceptionHandler
 
+	closureOverrides []*value.Closure // decorator overrides indexed by function index
+
 	scheduler   *runtime.Scheduler
 	currentTask *taskContext
 	suspended   bool
@@ -118,12 +120,17 @@ func NewVM(m *ir.Module, env *runtime.Env) *VM {
 		}
 		env.SetStructTypeNames(names)
 	}
+	var overrides []*value.Closure
+	if m != nil {
+		overrides = make([]*value.Closure, len(m.Functions))
+	}
 	vm := &VM{
-		mod:      m,
-		stack:    make([]value.Value, 0, 1024),
-		frames:   make([]Frame, 0, 16),
-		env:      env,
-		handlers: make([]exceptionHandler, 0, 16),
+		mod:              m,
+		stack:            make([]value.Value, 0, 1024),
+		frames:           make([]Frame, 0, 16),
+		env:              env,
+		handlers:         make([]exceptionHandler, 0, 16),
+		closureOverrides: overrides,
 	}
 	// Enable builtins to call closures by setting the closure caller
 	// We need to wrap callClosure to match the ClosureCaller signature
@@ -167,6 +174,14 @@ func (vm *VM) peek(offset int) (value.Value, error) {
 
 // RunMain runs the main function of the module.
 func (vm *VM) RunMain() (value.Value, error) {
+	if vm.mod.InitIndex >= 0 && vm.mod.InitIndex < len(vm.mod.Functions) {
+		initFn := vm.mod.Functions[vm.mod.InitIndex]
+		initClo := value.NewClosure(initFn, nil)
+		if _, err := vm.callClosure(initClo.Closure, 0); err != nil {
+			return value.Value{}, fmt.Errorf("module init error: %w", err)
+		}
+	}
+
 	if vm.mod.MainIndex < 0 || vm.mod.MainIndex >= len(vm.mod.Functions) {
 		return value.Value{}, fmt.Errorf("invalid main index %d", vm.mod.MainIndex)
 	}
@@ -648,10 +663,15 @@ func (vm *VM) callClosure(clo *value.Closure, numArgs int) (value.Value, error) 
 
 		// Function calls
 		case ir.OpCall:
-			// Direct call by function index - create closure with no upvalues
-			fn := vm.mod.Functions[inst.A]
-			cloVal := value.NewClosure(fn, nil)
-			retVal, err := vm.callClosure(cloVal.Closure, inst.B)
+			var clo *value.Closure
+			if inst.A < len(vm.closureOverrides) && vm.closureOverrides[inst.A] != nil {
+				clo = vm.closureOverrides[inst.A]
+			} else {
+				fn := vm.mod.Functions[inst.A]
+				cloVal := value.NewClosure(fn, nil)
+				clo = cloVal.Closure
+			}
+			retVal, err := vm.callClosure(clo, inst.B)
 			if err != nil {
 				if vm.raiseError(err) {
 					skipIncrement = true
@@ -732,6 +752,10 @@ func (vm *VM) callClosure(clo *value.Closure, numArgs int) (value.Value, error) 
 			//     We try to share the parent's upvalue object (for nested closures).
 			//
 			// Open upvalues are closed when the function that owns the stack slot returns.
+			if inst.B == 0 && inst.A < len(vm.closureOverrides) && vm.closureOverrides[inst.A] != nil {
+				vm.push(value.Value{Kind: value.KindClosure, Closure: vm.closureOverrides[inst.A]})
+				break
+			}
 			fn := vm.mod.Functions[inst.A]
 			numUpvalues := inst.B
 			currentFrame := vm.frames[len(vm.frames)-1]
@@ -851,6 +875,21 @@ func (vm *VM) callClosure(clo *value.Closure, numArgs int) (value.Value, error) 
 				}
 				vm.stack[upv.Index] = v
 			}
+
+		case ir.OpSetFunc:
+			cloVal, err := vm.pop()
+			if err != nil {
+				return value.Value{}, err
+			}
+			if cloVal.Kind != value.KindClosure || cloVal.Closure == nil {
+				return value.Value{}, fmt.Errorf("OpSetFunc: expected closure, got %v", cloVal.Kind)
+			}
+			if inst.A >= len(vm.closureOverrides) {
+				newOverrides := make([]*value.Closure, inst.A+1)
+				copy(newOverrides, vm.closureOverrides)
+				vm.closureOverrides = newOverrides
+			}
+			vm.closureOverrides[inst.A] = cloVal.Closure
 
 		case ir.OpReturn:
 			currentFrameIdx := len(vm.frames) - 1
@@ -1297,7 +1336,13 @@ func (vm *VM) callClosure(clo *value.Closure, numArgs int) (value.Value, error) 
 				return value.Value{}, err
 			}
 
-			fn := vm.mod.Functions[fnIdx]
+			var spawnClo *value.Closure
+			if fnIdx < len(vm.closureOverrides) && vm.closureOverrides[fnIdx] != nil {
+				spawnClo = vm.closureOverrides[fnIdx]
+			} else {
+				fn := vm.mod.Functions[fnIdx]
+				spawnClo = value.NewClosure(fn, nil).Closure
+			}
 
 			spawnArgs := make([]value.Value, numArgs)
 			for i := numArgs - 1; i >= 0; i-- {
@@ -1316,7 +1361,7 @@ func (vm *VM) callClosure(clo *value.Closure, numArgs int) (value.Value, error) 
 
 			if vm.scheduler != nil {
 				childVM := vm.spawnChild()
-				clo := value.NewClosure(fn, nil)
+				clo := value.Value{Kind: value.KindClosure, Closure: spawnClo}
 
 				for _, arg := range spawnArgs {
 					childVM.push(arg)
@@ -1360,11 +1405,10 @@ func (vm *VM) callClosure(clo *value.Closure, numArgs int) (value.Value, error) 
 				})
 				vm.scheduler.Schedule(childTask)
 			} else {
-				clo := value.NewClosure(fn, nil)
 				for _, arg := range spawnArgs {
 					vm.push(arg)
 				}
-				result, err := vm.callClosure(clo.Closure, numArgs)
+				result, err := vm.callClosure(spawnClo, numArgs)
 				if err != nil {
 					fut.Reject(err)
 				} else {

@@ -162,23 +162,36 @@ access time based on the receiver’s type.
 
 ## Decorators
 
+Decorators use expression-based syntax (`@<expr>`) and are applied at init-time.
+
 The checker validates decorators on function declarations via `checkDecorators`:
 
-1. Look up the decorator name in scope.
-2. If the decorator is a `*Func`, verify it accepts exactly one function parameter
-   matching the decorated function's type and returns the same function type.
-3. If the decorator is a `*GenericFunc`, infer type arguments from the decorated
-   function's signature via `inferDecoratorTypeArgs`, then instantiate and verify.
-4. For parameterized decorators (`@name(args)`), type-check the arguments against
-   the factory function's parameter types, then verify the returned decorator.
+1. Type-check the decorator expression via `checkExpr(dec.Expr)`.
+2. If the result is a `*Func`, verify it accepts exactly one function parameter
+   matching the decorated function's type and returns the same function type
+   (`validateDecoratorFunc`).
+3. If the result is a `*GenericFunc`, infer type arguments from the decorated
+   function's signature via `inferDecoratorTypeArgs`, instantiate, verify, and
+   create a synthetic `IdentExpr` with the monomorphized name.
+
+Since decorators are arbitrary expressions, parameterized decorators like
+`@cache(60)` are handled naturally: the expression `cache(60)` is type-checked
+as a call expression, and its result type is validated as a decorator function.
+
+For instance methods, the decorated function type includes the receiver as the
+first parameter (for example, `fun(Point, int) | int`), so the decorator must
+accept and return that receiver-inclusive function type.
 
 Resolved decorator info is stored in `Bindings.Decorators` as `[]*DecoratorInfo`,
-keyed by `*ast.FunDecl`. Each `DecoratorInfo` contains the resolved function name
-(possibly monomorphized), the function type, and any decorator arguments.
+keyed by `*ast.FunDecl`. Each `DecoratorInfo` contains the decorator expression
+(`ast.Expr`) and the resolved function type.
 
-The IR compiler uses this to emit wrapper trampolines: the original function body
-is copied to a `$body` function, and the original slot is rewritten to call the
-decorator with a closure of `$body`, then forward arguments to the wrapped result.
+The IR compiler generates a synthetic `__init__` function that applies decorators
+at module initialization using `OpSetFunc`. For each decorated function, the init
+function pushes the original as a closure, compiles the decorator expression, calls
+it, and emits `OpSetFunc` to replace the function slot. The VM stores the resulting
+closure in `closureOverrides` so that `OpCall`, `OpClosure`, and `OpSpawn` use the
+decorated version. This is a one-time operation with zero per-call overhead.
 
 ## Variadic Generics (TypePack)
 
@@ -201,7 +214,7 @@ The type system supports variadic type parameters via `TypePack`:
 - `Decorators` (`*ast.FunDecl -> []*DecoratorInfo`)
 
 The IR compiler uses monomorphized maps to collect concrete generic instances and
-decorator maps to emit wrapper trampolines.
+decorator maps to generate the `__init__` function for init-time decorator application.
 
 ## Errors
 

@@ -60,6 +60,9 @@ const (
 	OpLoadUpvalue  // A = upvalue index
 	OpStoreUpvalue // A = upvalue index
 
+	// Decorators
+	OpSetFunc // A = function index; pop closure, replace mod.Functions[A] with its function
+
 	// Async
 	OpSpawn            // A = function index, B = number of arguments; create task + future, schedule, push future
 	OpAwait            // pop future; if ready push result; else suspend current task
@@ -122,6 +125,7 @@ type Module struct {
 	Functions   []*Function
 	StructTypes []StructTypeInfo
 	MainIndex   int // Index of the main function in the Functions array
+	InitIndex   int // Index of the __init__ function (-1 if none)
 }
 
 // AddConstInt adds an integer constant and returns its index.

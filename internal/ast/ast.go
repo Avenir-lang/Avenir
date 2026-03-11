@@ -60,12 +60,8 @@ func (d *ImportDecl) Pos() token.Position { return d.ImportPos }
 
 // Decorator represents a decorator annotation on a function declaration.
 type Decorator struct {
-	AtPos   token.Position
-	Name    string
-	NamePos token.Position
-	Args    []Expr         // nil for simple decorators like @log
-	LParen  token.Position // zero if no args
-	RParen  token.Position // zero if no args
+	AtPos token.Position
+	Expr  Expr
 }
 
 func (d *Decorator) Pos() token.Position { return d.AtPos }
