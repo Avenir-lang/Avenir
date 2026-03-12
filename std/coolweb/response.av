@@ -1,6 +1,7 @@
 pckg std.coolweb;
 
 import std.json as jsonlib;
+import std.fs as fslib;
 
 struct response {}
 
@@ -45,4 +46,52 @@ pub fun redirectResponse(url | string, status | int = 302) | Response {
         headers = headers,
         body = fromString("")
     };
+}
+
+pub fun fileResponse(path | string, status | int = 200) | Response {
+    var f | fslib.File = fslib.open(path, "r");
+    defer f.close();
+
+    var data | bytes = f.readAll();
+    var headers | dict<string> = {
+        "Content-Type": detectContentType(path),
+        "Content-Length": "${len(data)}"
+    };
+
+    return Response{
+        status = status,
+        headers = headers,
+        body = data
+    };
+}
+
+fun detectContentType(path | string) | string {
+    if (path.endsWith(".html") || path.endsWith(".htm")) {
+        return "text/html; charset=utf-8";
+    }
+    if (path.endsWith(".css")) {
+        return "text/css; charset=utf-8";
+    }
+    if (path.endsWith(".js")) {
+        return "application/javascript; charset=utf-8";
+    }
+    if (path.endsWith(".json")) {
+        return "application/json";
+    }
+    if (path.endsWith(".txt")) {
+        return "text/plain; charset=utf-8";
+    }
+    if (path.endsWith(".png")) {
+        return "image/png";
+    }
+    if (path.endsWith(".jpg") || path.endsWith(".jpeg")) {
+        return "image/jpeg";
+    }
+    if (path.endsWith(".gif")) {
+        return "image/gif";
+    }
+    if (path.endsWith(".svg")) {
+        return "image/svg+xml";
+    }
+    return "application/octet-stream";
 }

@@ -9,6 +9,11 @@ fun index(ctx | coolweb.Context) | coolweb.Response {
     return ctx.text("Hello Avenir!");
 }
 
+@app.get("/source")
+fun source(ctx | coolweb.Context) | coolweb.Response {
+    return ctx.file("hello_world.av");
+}
+
 async fun main() | void {
     await app.run(8080);
 }

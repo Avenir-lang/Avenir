@@ -29,6 +29,10 @@ pub fun (ctx | Context).redirect(url | string, status | int = 302) | Response {
     return redirectResponse(url, status);
 }
 
+pub fun (ctx | Context).file(path | string, status | int = 200) | Response {
+    return fileResponse(path, status);
+}
+
 pub fun (ctx | Context).jsonBody() | any {
     var bodyStr | string = ctx.request.body.toString();
     return jsonlib.parse(bodyStr);

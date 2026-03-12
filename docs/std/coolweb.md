@@ -93,6 +93,7 @@ ctx.text("Hello", 200)          // text/plain
 ctx.json({ "key": "value" })    // application/json (default 200)
 ctx.html("<h1>Hi</h1>")         // text/html
 ctx.redirect("/other", 302)     // redirect
+ctx.file("public/index.html")   // file bytes + content type by extension
 ```
 
 ### Body Parsers
@@ -200,6 +201,7 @@ coolweb.textResponse("body", 200)
 coolweb.jsonResponse(data, 200)
 coolweb.htmlResponse("<h1>Hi</h1>", 200)
 coolweb.redirectResponse("/other", 302)
+coolweb.fileResponse("public/logo.png", 200)
 ```
 
 ## Module Structure
@@ -209,7 +211,7 @@ std/coolweb/
     coolweb.av      App, newApp, decorator methods, run(), dispatch
     router.av       Router, newRouter, route registration, resolve
     context.av      Context, response builders, body parsers
-    response.av     Response, textResponse, jsonResponse, htmlResponse, redirectResponse
+    response.av     Response, textResponse, jsonResponse, htmlResponse, redirectResponse, fileResponse
     request.av      Request
     route.av        Route, compileRoute, matchRoute
     middleware.av    executeChain
