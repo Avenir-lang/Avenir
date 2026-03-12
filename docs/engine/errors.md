@@ -51,10 +51,34 @@ The VM installs handlers on a stack. When an error is raised, it:
 If no handler exists, the error propagates to the VM entry point and terminates
 execution.
 
+### Typed Catch Clauses
+
+When a `try` block has multiple typed catch clauses, the compiler emits a chain
+of type checks at the handler entry point:
+
+1. `OpIsStructType A` (A = struct type index) — peeks TOS, pushes bool
+2. `OpJumpIfFalse` to next clause
+3. On match, store thrown value in local, execute clause body, `OpJump` to end
+4. After all clauses, `OpThrow` re-throws unmatched errors
+
+A `catch (e | error)` clause matches any error and acts as a fallback.
+
+### Throws Declarations
+
+Functions can declare thrown error types using `!` after the return type:
+
+```avenir
+fun f() | void ! FileNotFound, PermissionDenied { ... }
+```
+
+The `Func` type carries a `Throws []Type` field.
+
 ## Notes
 
-- `throw` expects an `error` value; non‑error throws are wrapped as errors.
-- `errorMessage(e)` extracts the user‑visible message.
+- `throw` accepts `error` values and struct values.
+- Struct values thrown as errors are passed through to catch handlers without
+  wrapping.
+- `errorMessage(e)` extracts the user‑visible message from `error` values.
 
 ## References
 

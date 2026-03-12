@@ -447,42 +447,42 @@ var str | string = data.toString();
 
 ## Dict Methods
 
-Dicts have the following methods:
+For a `dict<K, V>` (shorthand `dict<V>` uses `K = string`):
 
 | Method | Parameters | Returns | Notes |
 | --- | --- | --- | --- |
 | `length` | — | `int` | Entry count |
-| `keys` | — | `list<string>` | Order not guaranteed |
-| `values` | — | `list<any>` | Order not guaranteed |
-| `has` | `key | string` | `bool` | Presence check |
-| `get` | `key | string` | `any?` | `none` if missing |
-| `set` | `key | string`, `value | any` | `void` | Mutates in place |
-| `remove` | `key | string` | `bool` | Returns whether key existed |
+| `keys` | — | `list<K>` | Order not guaranteed |
+| `values` | — | `list<V>` | Order not guaranteed |
+| `has` | `key | K` | `bool` | Presence check |
+| `get` | `key | K` | `V?` | `none` if missing |
+| `set` | `key | K`, `value | V` | `void` | Mutates in place |
+| `remove` | `key | K` | `bool` | Returns whether key existed |
 
 ### `length() | int`
 
 Returns the number of entries in the dictionary.
 
-### `keys() | list<string>`
+### `keys() | list<K>`
 
 Returns the dictionary keys. Order is not guaranteed.
 
-### `values() | list<any>`
+### `values() | list<V>`
 
 Returns the dictionary values. Order is not guaranteed.
 
-### `has(key | string) | bool`
+### `has(key | K) | bool`
 
 Checks if a key is present in the dictionary.
 
-### `get(key | string) | any?`
+### `get(key | K) | V?`
 
 Returns the value as an optional. Returns `none` if the key is missing.
 
-### `set(key | string, value | any) | void`
+### `set(key | K, value | V) | void`
 
 Inserts or updates a key. Mutates the dictionary in place.
 
-### `remove(key | string) | bool`
+### `remove(key | K) | bool`
 
 Removes a key and returns whether it existed.

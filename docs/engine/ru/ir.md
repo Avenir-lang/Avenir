@@ -48,7 +48,7 @@ type Chunk struct {
 - **Управление потоком**: `OpJump`, `OpJumpIfFalse`
 - **Вызовы**: `OpCall`, `OpCallValue`, `OpCallBuiltin`, `OpReturn`
 - **Данные**: `OpMakeList`, `OpMakeDict`, `OpMakeStruct`, `OpIndex`
-- **Исключения**: `OpBeginTry`, `OpEndTry`, `OpThrow`
+- **Исключения**: `OpBeginTry`, `OpEndTry`, `OpThrow`, `OpIsStructType`
 - **Замыкания**: `OpClosure`, `OpLoadUpvalue`, `OpStoreUpvalue`
 - **Асинхронность**: `OpSpawn`, `OpAwait`
 
@@ -62,6 +62,25 @@ type Chunk struct {
 
 - необобщённые generic-декларации пропускаются
 - компилятор берёт конкретные инстансы из bindings type checker-а
+
+### Try/Catch
+
+`try { ... } catch (...) { ... }` компилируется в:
+
+1. `OpBeginTry` с IP обработчика
+2. инструкции try-блока
+3. `OpEndTry`
+4. блок обработчика
+
+При наличии нескольких типизированных catch-клауз блок обработчика генерирует
+цепочку проверок:
+
+1. Для каждого `catch (var | StructType)`:
+   - `OpIsStructType A` (A = индекс типа структуры) — peek TOS, push bool
+   - `OpJumpIfFalse` к следующей клаузе
+   - сохранение значения в локальную переменную, тело клаузы, `OpJump` в конец
+2. Для `catch (var | error)`: fallback-клауза
+3. Финальный `OpThrow` перебрасывает необработанные ошибки
 
 ### Async/Await
 

@@ -7,7 +7,7 @@ Avenir is a statically-typed programming language designed for building reliable
 ### Type System
 
 - **Static typing**: All types are checked at compile time
-- **Explicit typing**: Variable types must be explicitly declared (no inference)
+- **Type inference**: Local type inference for `var name = expr;` and generic call inference
 - **Structural and nominal types**: Lists use structural typing, structs use nominal typing
 - **Union types**: Support for type unions (`<int|string>`)
 - **Optional types**: Optional values (`T?`) for nullable types
@@ -16,7 +16,7 @@ Avenir is a statically-typed programming language designed for building reliable
 ### Core Types
 
 - **Primitives**: `int`, `float`, `string`, `bool`, `bytes`
-- **Collections**: `list<T>` and `dict<T>`
+- **Collections**: `list<T>` and `dict<K, V>` (or `dict<V>`)
 - **Structs**: User-defined types with named fields
 - **Functions**: First-class functions and closures
 - **Error**: Built-in error type for exception handling
@@ -42,7 +42,7 @@ Avenir is a statically-typed programming language designed for building reliable
 - **Conditionals**: `if`/`else` statements with optional chaining
 - **Loops**: `while`, C-style `for`, and `for...in` loops
 - **Switch**: Value-based `switch` with `case` and `default` (no fallthrough)
-- **Exceptions**: `try`/`catch` for error handling
+- **Exceptions**: `try`/`catch` with typed catch clauses for error handling
 - **Loop control**: `break` and `continue` in loops
 - **Deferred calls**: `defer` executes call expressions on function return (LIFO)
 

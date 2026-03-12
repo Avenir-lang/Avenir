@@ -45,6 +45,73 @@ func (t *testOutputWriter) ReadLine() (string, error) {
 	return "", nil
 }
 
+func TestCompile_TypeInference(t *testing.T) {
+	src := `
+pckg main;
+
+fun main() | void {
+    var a = 42;
+    var b = "hello";
+    var c = 3.14;
+    var d = true;
+    var e = [1, 2, 3];
+    var f = {"key": "value"};
+    print(typeOf(a));
+    print(typeOf(b));
+    print(typeOf(c));
+    print(typeOf(d));
+    print(typeOf(e));
+    print(typeOf(f));
+
+    var g | int = 10;
+    print(typeOf(g));
+}
+`
+	l := lexer.New(src)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("parser error: %s", e)
+		}
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	mod, errs := ir.Compile(prog)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("compile error: %s", e)
+		}
+		t.Fatalf("expected no compile errors, got %d", len(errs))
+	}
+
+	var output []string
+	env := runtime.NewEnv(&testOutputWriter{output: &output})
+	machine := vm.NewVM(mod, env)
+	_, err := machine.RunMain()
+	if err != nil {
+		t.Fatalf("RunMain error: %v", err)
+	}
+
+	expected := []string{
+		"int",
+		"string",
+		"float",
+		"bool",
+		"list<int>",
+		"dict<string>",
+		"int",
+	}
+	if len(output) != len(expected) {
+		t.Fatalf("expected %d outputs, got %d: %v", len(expected), len(output), output)
+	}
+	for i, exp := range expected {
+		if output[i] != exp {
+			t.Fatalf("output[%d]: expected %q, got %q", i, exp, output[i])
+		}
+	}
+}
+
 func TestCompile_ArithMain(t *testing.T) {
 	src := `
 pckg main;
@@ -5613,5 +5680,238 @@ fun main() | int {
 	}
 	if len(mod.Globals) < 1 {
 		t.Fatalf("expected at least 1 global (app), got %d", len(mod.Globals))
+	}
+}
+
+func TestCompile_GenericTypeInference(t *testing.T) {
+	src := `
+pckg main;
+
+fun identity<T>(x | T) | T {
+    return x;
+}
+
+fun main() | void {
+    var a = identity(42);
+    print(typeOf(a));
+    print("${a}");
+
+    var b = identity("hello");
+    print(typeOf(b));
+    print(b);
+
+    var c = identity(true);
+    print(typeOf(c));
+    print("${c}");
+
+    var d = identity<int>(99);
+    print(typeOf(d));
+    print("${d}");
+}
+`
+	l := lexer.New(src)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("parser error: %s", e)
+		}
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	mod, errs := ir.Compile(prog)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("compile error: %s", e)
+		}
+		t.Fatalf("expected no compile errors, got %d", len(errs))
+	}
+
+	var output []string
+	env := runtime.NewEnv(&testOutputWriter{output: &output})
+	machine := vm.NewVM(mod, env)
+	_, err := machine.RunMain()
+	if err != nil {
+		t.Fatalf("RunMain error: %v", err)
+	}
+
+	expected := []string{
+		"int",
+		"42",
+		"string",
+		"hello",
+		"bool",
+		"true",
+		"int",
+		"99",
+	}
+	if len(output) != len(expected) {
+		t.Fatalf("expected %d outputs, got %d: %v", len(expected), len(output), output)
+	}
+	for i, exp := range expected {
+		if output[i] != exp {
+			t.Fatalf("output[%d]: expected %q, got %q", i, exp, output[i])
+		}
+	}
+}
+
+func TestCompile_TypedErrors(t *testing.T) {
+	src := `
+pckg main;
+
+struct FileNotFound {
+    path | string;
+}
+
+struct ConnectionRefused {
+    host | string;
+}
+
+fun failFile() | void ! FileNotFound {
+    throw FileNotFound{path = "/tmp/missing.txt"};
+}
+
+fun failConn() | void ! ConnectionRefused {
+    throw ConnectionRefused{host = "localhost"};
+}
+
+fun failBasic() | void {
+    throw error("basic error");
+}
+
+fun main() | void {
+    try {
+        failFile();
+    } catch (e | FileNotFound) {
+        print(e.path);
+    } catch (e2 | ConnectionRefused) {
+        print(e2.host);
+    }
+
+    try {
+        failConn();
+    } catch (e | FileNotFound) {
+        print(e.path);
+    } catch (e2 | ConnectionRefused) {
+        print(e2.host);
+    }
+
+    try {
+        failBasic();
+    } catch (e | error) {
+        print("caught basic error");
+    }
+}
+`
+	l := lexer.New(src)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("parser error: %s", e)
+		}
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	mod, errs := ir.Compile(prog)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("compile error: %s", e)
+		}
+		t.Fatalf("expected no compile errors, got %d", len(errs))
+	}
+
+	var output []string
+	env := runtime.NewEnv(&testOutputWriter{output: &output})
+	machine := vm.NewVM(mod, env)
+	_, err := machine.RunMain()
+	if err != nil {
+		t.Fatalf("RunMain error: %v", err)
+	}
+
+	expected := []string{
+		"/tmp/missing.txt",
+		"localhost",
+		"caught basic error",
+	}
+	if len(output) != len(expected) {
+		t.Fatalf("expected %d outputs, got %d: %v", len(expected), len(output), output)
+	}
+	for i, exp := range expected {
+		if output[i] != exp {
+			t.Fatalf("output[%d]: expected %q, got %q", i, exp, output[i])
+		}
+	}
+}
+
+func TestCompile_GenericDict(t *testing.T) {
+	src := `
+pckg main;
+
+fun main() | void {
+    var user | dict<string> = {
+        name: "Alex",
+        role: "admin"
+    };
+    print(user.name);
+    print(user.role);
+
+    var scores | dict<string, int> = {
+        math: 95,
+        science: 88
+    };
+    print(scores.math);
+
+    var keys | list<string> = scores.keys();
+    print(keys.length());
+
+    var hasScience | bool = scores.has("science");
+    print(hasScience);
+
+    var val | int? = scores.get("math");
+    print(val);
+}
+`
+	l := lexer.New(src)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if errs := p.Errors(); len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("parser error: %s", e)
+		}
+		t.Fatalf("expected no parser errors, got %d", len(errs))
+	}
+
+	mod, errs := ir.Compile(prog)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("compile error: %s", e)
+		}
+		t.Fatalf("expected no compile errors, got %d", len(errs))
+	}
+
+	var output []string
+	env := runtime.NewEnv(&testOutputWriter{output: &output})
+	machine := vm.NewVM(mod, env)
+	_, err := machine.RunMain()
+	if err != nil {
+		t.Fatalf("RunMain error: %v", err)
+	}
+
+	expected := []string{
+		"Alex",
+		"admin",
+		"95",
+		"2",
+		"true",
+		"some(95)",
+	}
+	if len(output) != len(expected) {
+		t.Fatalf("expected %d outputs, got %d: %v", len(expected), len(output), output)
+	}
+	for i, exp := range expected {
+		if output[i] != exp {
+			t.Fatalf("output[%d]: expected %q, got %q", i, exp, output[i])
+		}
 	}
 }

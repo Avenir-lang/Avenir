@@ -41,7 +41,7 @@
 - присваивания: `name = expr;`
 - expression statements
 - `if` / `else`, `while`, `for`, `for (item in list)`
-- `return`, `try` / `catch`, `throw`, `break`, `continue`
+- `return`, `try` / `catch` (с типизированными catch-клаузами), `throw`, `break`, `continue`
 - `switch` / `case` / `default`
 - `defer` (только call expression)
 
@@ -56,6 +56,17 @@
 3. `fun` (обязательно)
 
 Флаг асинхронности сохраняется в `ast.FunDecl.IsAsync`.
+
+### Декларация throws
+
+После типа возврата парсер принимает `! Type1, Type2` для объявления
+типов выбрасываемых ошибок. Они сохраняются в `ast.FunDecl.Throws`.
+
+### Типизированные catch-клаузы
+
+Парсер принимает несколько `catch (varName | Type) { ... }` клауз после
+блока `try`. Каждая клауза сохраняется как `ast.CatchClause` с `VarName`,
+`Type` и `Body` в `ast.TryStmt.Catches`.
 
 ### Await-выражения
 
@@ -92,7 +103,7 @@ await a + b
 Парсер поддерживает литералы `int`, `float`, `string`, `bytes`, `bool`,
 `none`, `some(expr)`, list/dict/struct литералы и интерполированные строки.
 
-Типы: простые, qualified, list, dict, optional (`T?`), union, function.
+Типы: простые, qualified, list, `dict<K, V>` (или `dict<V>`), optional (`T?`), union, function.
 
 ## Обработка ошибок
 

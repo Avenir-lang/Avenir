@@ -110,21 +110,38 @@ func (l *List) equal(other Type) bool {
 	return true
 }
 
-// Dict represents a dictionary type: dict<T>
+// Dict represents a dictionary type: dict<K, V>
 type Dict struct {
+	KeyType   Type // nil means string (backward compat)
 	ValueType Type
 }
 
-func (d *Dict) String() string {
-	if d.ValueType == nil {
-		return "dict<?>"
+func (d *Dict) keyType() Type {
+	if d.KeyType == nil {
+		return String
 	}
-	return "dict<" + d.ValueType.String() + ">"
+	return d.KeyType
+}
+
+func (d *Dict) String() string {
+	if d.KeyType == nil {
+		if d.ValueType == nil {
+			return "dict<?>"
+		}
+		return "dict<" + d.ValueType.String() + ">"
+	}
+	if d.ValueType == nil {
+		return "dict<" + d.KeyType.String() + ", ?>"
+	}
+	return "dict<" + d.KeyType.String() + ", " + d.ValueType.String() + ">"
 }
 
 func (d *Dict) equal(other Type) bool {
 	o, ok := other.(*Dict)
 	if !ok {
+		return false
+	}
+	if !d.keyType().equal(o.keyType()) {
 		return false
 	}
 	if d.ValueType == nil || o.ValueType == nil {
@@ -139,6 +156,7 @@ func (d *Dict) equal(other Type) bool {
 type Func struct {
 	ParamTypes []Type
 	Result     Type
+	Throws     []Type // error types this function can throw
 }
 
 func (f *Func) String() string {
@@ -154,6 +172,15 @@ func (f *Func) String() string {
 		s += f.Result.String()
 	} else {
 		s += "void"
+	}
+	if len(f.Throws) > 0 {
+		s += " ! "
+		for i, t := range f.Throws {
+			if i > 0 {
+				s += " | "
+			}
+			s += t.String()
+		}
 	}
 	return s
 }
@@ -440,10 +467,15 @@ func SubstituteType(t Type, mapping map[string]Type) Type {
 		}
 		return &List{ElementTypes: elems}
 	case *Dict:
-		if ty.ValueType == nil {
-			return t
+		var kt Type
+		if ty.KeyType != nil {
+			kt = SubstituteType(ty.KeyType, mapping)
 		}
-		return &Dict{ValueType: SubstituteType(ty.ValueType, mapping)}
+		var vt Type
+		if ty.ValueType != nil {
+			vt = SubstituteType(ty.ValueType, mapping)
+		}
+		return &Dict{KeyType: kt, ValueType: vt}
 	case *TypePack:
 		expanded := make([]Type, len(ty.Types))
 		for i, t := range ty.Types {

@@ -765,6 +765,9 @@ func (fc *funcCompiler) addError(node ast.Node, format string, args ...interface
 }
 
 func (fc *funcCompiler) resolveTypeNode(tn ast.TypeNode) types.Type {
+	if tn == nil {
+		return types.Any
+	}
 	switch t := tn.(type) {
 	case *ast.SimpleType:
 		switch t.Name {
@@ -797,7 +800,11 @@ func (fc *funcCompiler) resolveTypeNode(tn ast.TypeNode) types.Type {
 		}
 		return &types.List{ElementTypes: elems}
 	case *ast.DictType:
-		return &types.Dict{ValueType: fc.resolveTypeNode(t.ValueType)}
+		var kt types.Type
+		if t.KeyType != nil {
+			kt = fc.resolveTypeNode(t.KeyType)
+		}
+		return &types.Dict{KeyType: kt, ValueType: fc.resolveTypeNode(t.ValueType)}
 	case *ast.OptionalType:
 		return &types.Optional{Inner: fc.resolveTypeNode(t.Inner)}
 	default:
@@ -1250,22 +1257,69 @@ func (fc *funcCompiler) compileSwitch(s *ast.SwitchStmt) {
 }
 
 func (fc *funcCompiler) compileTry(s *ast.TryStmt) {
-	// We'll patch handler IP later
 	beginIdx := fc.chunk.Emit(OpBeginTry, 0, 0)
 
-	// compile try block
 	fc.compileBlock(s.Body)
 
 	fc.chunk.Emit(OpEndTry, 0, 0)
 	jmpOverCatch := fc.chunk.Emit(OpJump, 0, 0)
 
-	// handler starts here
 	handlerIP := len(fc.chunk.Code)
 	fc.chunk.Code[beginIdx].A = handlerIP
 
+	if len(s.Catches) > 1 {
+		var jumpToEnds []int
+
+		for _, clause := range s.Catches {
+			typeName := ""
+			if st, ok := clause.Type.(*ast.SimpleType); ok {
+				typeName = st.Name
+			}
+
+			prevScope := fc.scope
+			fc.scope = newLocalScope(prevScope)
+
+			if typeName == "error" || typeName == "" {
+				slot := fc.allocLocal(clause.VarName, s)
+				fc.chunk.Emit(OpStoreLocal, slot, 0)
+				fc.chunk.Emit(OpPop, 0, 0)
+				fc.compileBlock(clause.Body)
+				fc.scope = prevScope
+				jumpToEnds = append(jumpToEnds, fc.chunk.Emit(OpJump, 0, 0))
+			} else {
+				structIdx, found := fc.c.structIndex[typeName]
+				if !found {
+					fc.addError(s, "unknown struct type %q in catch clause", typeName)
+					fc.scope = prevScope
+					continue
+				}
+
+				fc.chunk.Emit(OpIsStructType, structIdx, 0)
+				jmpIfNotMatch := fc.chunk.Emit(OpJumpIfFalse, 0, 0)
+
+				slot := fc.allocLocal(clause.VarName, s)
+				fc.chunk.Emit(OpStoreLocal, slot, 0)
+				fc.chunk.Emit(OpPop, 0, 0)
+				fc.compileBlock(clause.Body)
+				fc.scope = prevScope
+				jumpToEnds = append(jumpToEnds, fc.chunk.Emit(OpJump, 0, 0))
+
+				nextClauseIP := len(fc.chunk.Code)
+				fc.chunk.Code[jmpIfNotMatch].A = nextClauseIP
+			}
+		}
+
+		fc.chunk.Emit(OpThrow, 0, 0)
+
+		endIP := len(fc.chunk.Code)
+		for _, idx := range jumpToEnds {
+			fc.chunk.Code[idx].A = endIP
+		}
+		fc.chunk.Code[jmpOverCatch].A = endIP
+		return
+	}
+
 	if s.CatchBody != nil {
-		// Exception value is on top of the stack.
-		// Allocate local for catch variable and store it.
 		slot := fc.allocLocal(s.CatchName, s)
 		fc.chunk.Emit(OpStoreLocal, slot, 0)
 		fc.chunk.Emit(OpPop, 0, 0)

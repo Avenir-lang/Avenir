@@ -39,6 +39,7 @@ type Program struct {
 - `Name`, `Params`, `Return`
 - опциональный `Receiver` для instance/static методов
 - `IsPublic` для `pub fun`
+- `Throws []TypeNode` для объявленных типов ошибок (`! ErrorType`)
 
 Виды receiver:
 
@@ -62,7 +63,7 @@ type Program struct {
 Ключевые варианты `TypeNode`:
 
 - `SimpleType`, `QualifiedType`
-- `ListType`, `DictType`
+- `ListType`, `DictType` (`dict<K, V>` или `dict<V>`)
 - `FuncType`, `UnionType`, `OptionalType`
 
 ## Узлы операторов
@@ -71,7 +72,7 @@ type Program struct {
 
 - `BlockStmt`, `VarDeclStmt`, `AssignStmt`
 - `IfStmt`, `WhileStmt`, `ForStmt`, `ForEachStmt`
-- `ReturnStmt`, `TryStmt`, `ThrowStmt`, `BreakStmt`
+- `ReturnStmt`, `TryStmt` (с `Catches []*CatchClause` для типизированных catch-клауз), `ThrowStmt`, `BreakStmt`
 - `ExprStmt`
 
 ## Узлы выражений

@@ -5,8 +5,9 @@ This document describes the static type system and the checker in
 
 ## Overview
 
-Type checking is explicit and static: all variables and parameters must have
-declared types. The checker validates program structure, resolves names, and
+Type checking is static. Variables can use explicit type annotations or local
+type inference (`var name = expr;`). Generic function calls support type
+argument inference from call arguments. The checker validates program structure, resolves names, and
 produces binding metadata used by the IR compiler.
 
 Key files:
@@ -32,8 +33,12 @@ collect unique element types in order of appearance.
 
 ### Dict Types
 
-`dict<T>` maps **string keys** to values of type `T`. Dict literals infer `T`
-as the union of value types if needed.
+`dict<K, V>` maps keys of type `K` to values of type `V`. The shorthand
+`dict<V>` defaults `K` to `string`. Dict literals infer `V` as the union of
+value types if needed.
+
+Internally, `Dict.KeyType` is `nil` when using the shorthand form; the
+`keyType()` helper returns `String` in that case.
 
 ### Optional Types
 
@@ -68,6 +73,10 @@ var mixed | <int|string> = 1;
 
 `fun(T1, T2) | R` for first‑class functions. Parameter and return types are
 structural for equivalence.
+
+Functions can declare thrown error types: `Func.Throws []Type`. The type checker
+validates `throw` expressions against declared throws and tracks them via the
+`currentThrows` field.
 
 ### Future Types (Async)
 
@@ -135,8 +144,8 @@ For generics, declaration and checking include additional steps:
 - Unions allow assignment if the source type matches any variant.
 - Lists are assignable if each element type is assignable to some target
   element type.
-- Dicts are assignable if the value type is assignable to the target value
-  type.
+- Dicts are assignable if both the key type and value type are assignable to
+  the target key and value types.
 - Structs require identical names (nominal).
 - Interfaces require a full method match (structural).
 

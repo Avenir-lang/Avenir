@@ -48,7 +48,7 @@ Supported statements include:
 - C‑style `for`
 - `for (item in list)` foreach
 - `return`
-- `try` / `catch`
+- `try` / `catch` (with multiple typed catch clauses)
 - `throw`
 - `break`
 - `continue`
@@ -66,6 +66,17 @@ Supported statements include:
 3. `fun` (required)
 
 The parser stores the async marker in `ast.FunDecl.IsAsync`.
+
+### Throws Declarations
+
+After the return type, the parser accepts `! Type1, Type2` to declare thrown
+error types. These are stored in `ast.FunDecl.Throws`.
+
+### Typed Catch Clauses
+
+The parser accepts multiple `catch (varName | Type) { ... }` clauses after a
+`try` block. Each clause is stored as an `ast.CatchClause` with `VarName`,
+`Type`, and `Body`. Clauses are stored in `ast.TryStmt.Catches`.
 
 ### Await Expressions
 
@@ -126,7 +137,7 @@ Type parsing supports:
 - Simple types: `int`, `float`, `string`, `bool`, `bytes`, `void`, `any`, `error`
 - Qualified types: `net.Socket`
 - List types: `list<T1, T2>`
-- Dict types: `dict<T>`
+- Dict types: `dict<K, V>` or `dict<V>` (shorthand for `dict<string, V>`)
 - Optional types: `T?`
 - Union types: `<T1|T2|...>`
 - Function types: `fun(T1, T2) | R`

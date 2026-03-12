@@ -70,7 +70,7 @@ type VM struct {
 }
 
 func (vm *VM) throwValue(exc value.Value) bool {
-	if exc.Kind != value.KindError {
+	if exc.Kind != value.KindError && exc.Kind != value.KindStruct {
 		exc = value.ErrorValue(fmt.Sprintf("thrown non-error: %s", exc.String()))
 	}
 
@@ -1329,6 +1329,19 @@ func (vm *VM) callClosure(clo *value.Closure, numArgs int) (value.Value, error) 
 				vm.handlers = vm.handlers[:len(vm.handlers)-1]
 			}
 
+		case ir.OpIsStructType:
+			typeIdx := inst.A
+			top, err := vm.peek(0)
+			if err != nil {
+				if vm.raiseError(err) {
+					skipIncrement = true
+					continue
+				}
+				return value.Value{}, err
+			}
+			matched := top.Kind == value.KindStruct && top.Struct != nil && top.Struct.TypeIndex == typeIdx
+			vm.push(value.Bool(matched))
+
 		case ir.OpThrow:
 			exc, err := vm.pop()
 			if err != nil {
@@ -1339,7 +1352,6 @@ func (vm *VM) callClosure(clo *value.Closure, numArgs int) (value.Value, error) 
 				return value.Value{}, err
 			}
 			if vm.throwValue(exc) {
-				skipIncrement = true
 				continue
 			}
 			return value.Value{}, fmt.Errorf("unhandled error: %s", errorMessage(exc))

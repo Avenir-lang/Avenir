@@ -78,13 +78,61 @@ try {
 }
 ```
 
-Переменная `catch` должна иметь тип `error`.
+Переменная `catch` может иметь тип `error` или тип структуры.
+
+### Типизированные catch-клаузы
+
+`try` поддерживает несколько типизированных catch-клауз для сопоставления с
+конкретными типами ошибок. Клаузы проверяются по порядку:
+
+```avenir
+struct FileNotFound {
+    path | string;
+}
+
+struct PermissionDenied {
+    file | string;
+}
+
+fun riskyOp() | void ! FileNotFound, PermissionDenied {
+    throw FileNotFound{path = "/tmp/missing.txt"};
+}
+
+fun main() | void {
+    try {
+        riskyOp();
+    } catch (e | FileNotFound) {
+        print("не найден: " + e.path);
+    } catch (e | PermissionDenied) {
+        print("отказано: " + e.file);
+    } catch (e | error) {
+        print("другая ошибка");
+    }
+}
+```
+
+`catch (e | error)` — fallback-клауза, перехватывающая любую ошибку.
 
 ### `throw`
 
 ```avenir
 throw error("что-то пошло не так");
 ```
+
+Выражение может быть типа `error` или объявленного типа структуры.
+
+### Декларация throws
+
+Функции могут объявлять типы выбрасываемых ошибок через `!` после типа возврата:
+
+```avenir
+fun readFile(path | string) | string ! FileNotFound {
+    throw FileNotFound{path = path};
+}
+```
+
+Type checker валидирует, что выражения `throw` внутри тела функции соответствуют
+объявленным типам.
 
 ## Блоки
 

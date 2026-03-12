@@ -144,7 +144,7 @@ Type parsing supports:
 - Simple types: `int`, `float`, `string`, `bool`, `bytes`, `void`, `any`, `error`
 - Qualified types: `net.Socket`
 - List types: `list<T1, T2>`
-- Dict types: `dict<T>`
+- Dict types: `dict<K, V>` or `dict<V>` (shorthand for `dict<string, V>`)
 - Optional types: `T?`
 - Union types: `<T1|T2|...>`
 - Function types: `fun(T1, T2) | R`

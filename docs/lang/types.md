@@ -220,18 +220,19 @@ Lists use structural typing: two lists are equal if they have the same element t
 
 ### Dicts
 
-Dicts map string keys to values and are written as `dict<T>` where `T` is the
-value type:
+Dicts map keys to values and are written as `dict<K, V>` where `K` is the key
+type and `V` is the value type. The shorthand `dict<V>` defaults the key type
+to `string`:
 
 ```avenir
 var user | dict<any> = { name: "Alex", "age": 30 };
-var scores | dict<int> = { alice: 10, bob: 12 };
+var scores | dict<string, int> = { math: 95, science: 88 };
 ```
 
-Keys are always strings; values must be assignable to `T`.
-Use `dict.get()` when a key may be missing; it returns an optional `T?`.
+Values must be assignable to `V`.
+Use `dict.get()` when a key may be missing; it returns an optional `V?`.
 
-`dict<T>` is also a built-in parametric type (not a user-defined generic type).
+`dict<K, V>` is a built-in parametric type (not a user-defined generic type).
 
 ### Futures
 

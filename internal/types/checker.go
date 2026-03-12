@@ -125,6 +125,7 @@ type Checker struct {
 	errors []error
 
 	currentReturn Type
+	currentThrows []Type // error types the current function can throw
 
 	bindings *Bindings // optional binding info sink
 
@@ -262,7 +263,12 @@ func CheckWorldWithBindings(world *World) (*Bindings, []error) {
 		}
 
 		for _, v := range modInfo.Prog.Vars {
-			varType := c.typeOfTypeNode(v.Type)
+			var varType Type
+			if v.Type != nil {
+				varType = c.typeOfTypeNode(v.Type)
+			} else {
+				varType = Any
+			}
 			_ = c.global.Insert(&Symbol{
 				Name:     v.Name,
 				Kind:     SymVar,
@@ -402,11 +408,15 @@ func (c *Checker) typeFromBuiltinTypeRef(tr builtins.TypeRef) Type {
 		}
 		return &List{ElementTypes: elemTypes}
 	case builtins.TypeDict:
+		var keyType Type
 		var valueType Type = Any
-		if len(tr.Elem) > 0 {
+		if len(tr.Elem) == 2 {
+			keyType = c.typeFromBuiltinTypeRef(tr.Elem[0])
+			valueType = c.typeFromBuiltinTypeRef(tr.Elem[1])
+		} else if len(tr.Elem) == 1 {
 			valueType = c.typeFromBuiltinTypeRef(tr.Elem[0])
 		}
-		return &Dict{ValueType: valueType}
+		return &Dict{KeyType: keyType, ValueType: valueType}
 	case builtins.TypeError:
 		return ErrorType
 	case builtins.TypeBytes:
@@ -742,10 +752,18 @@ func (c *Checker) declareFunc(fn *ast.FunDecl) {
 		resultType = &Future{Inner: retType}
 	}
 
+	// Resolve throws types
+	var throwsTypes []Type
+	for _, tn := range fn.Throws {
+		tt := c.typeOfTypeNode(tn)
+		throwsTypes = append(throwsTypes, tt)
+	}
+
 	// Regular function: insert into global scope
 	fnType := &Func{
 		ParamTypes: params,
 		Result:     resultType,
+		Throws:     throwsTypes,
 	}
 
 	if err := c.global.Insert(&Symbol{
@@ -836,6 +854,10 @@ func (c *Checker) checkFunc(fn *ast.FunDecl) {
 		c.currentReturn = fnType.Result
 	}
 	defer func() { c.currentReturn = prevRet }()
+
+	prevThrows := c.currentThrows
+	c.currentThrows = fnType.Throws
+	defer func() { c.currentThrows = prevThrows }()
 
 	// For instance methods, insert receiver into scope and track it for visibility checks
 	// Static methods don't have a receiver variable
@@ -1235,8 +1257,12 @@ func (c *Checker) typeOfTypeNode(tn ast.TypeNode) Type {
 		}
 		return &List{ElementTypes: elemTypes}
 	case *ast.DictType:
+		var keyType Type
+		if t.KeyType != nil {
+			keyType = c.typeOfTypeNode(t.KeyType)
+		}
 		valueType := c.typeOfTypeNode(t.ValueType)
-		return &Dict{ValueType: valueType}
+		return &Dict{KeyType: keyType, ValueType: valueType}
 	case *ast.OptionalType:
 		innerType := c.typeOfTypeNode(t.Inner)
 		return &Optional{Inner: innerType}
@@ -1404,6 +1430,112 @@ func (c *Checker) instantiateGenericStruct(gs *GenericStruct, git *ast.GenericIn
 	return structType
 }
 
+func (c *Checker) inferTypeArgs(gf *GenericFunc, argTypes []Type) ([]Type, bool) {
+	typeParamSet := make(map[string]bool, len(gf.TypeParams))
+	for _, tp := range gf.TypeParams {
+		typeParamSet[tp] = true
+	}
+
+	inferred := make(map[string]Type)
+
+	var unify func(tn ast.TypeNode, concrete Type) bool
+	unify = func(tn ast.TypeNode, concrete Type) bool {
+		switch t := tn.(type) {
+		case *ast.SimpleType:
+			if typeParamSet[t.Name] {
+				if prev, exists := inferred[t.Name]; exists {
+					return prev.equal(concrete)
+				}
+				inferred[t.Name] = concrete
+				return true
+			}
+			return true
+		case *ast.ListType:
+			lt, ok := concrete.(*List)
+			if !ok {
+				return false
+			}
+			if len(t.ElementTypes) == 1 && len(lt.ElementTypes) >= 1 {
+				return unify(t.ElementTypes[0], lt.ElementTypes[0])
+			}
+			return true
+		case *ast.DictType:
+			dt, ok := concrete.(*Dict)
+			if !ok {
+				return false
+			}
+			if t.ValueType != nil && dt.ValueType != nil {
+				return unify(t.ValueType, dt.ValueType)
+			}
+			return true
+		case *ast.OptionalType:
+			ot, ok := concrete.(*Optional)
+			if !ok {
+				return false
+			}
+			return unify(t.Inner, ot.Inner)
+		case *ast.FuncType:
+			ft, ok := concrete.(*Func)
+			if !ok {
+				return false
+			}
+			if len(t.ParamTypes) != len(ft.ParamTypes) {
+				return false
+			}
+			for i, pt := range t.ParamTypes {
+				if !unify(pt, ft.ParamTypes[i]) {
+					return false
+				}
+			}
+			if t.Result != nil && ft.Result != nil {
+				return unify(t.Result, ft.Result)
+			}
+			return true
+		case *ast.GenericInstanceType:
+			switch t.Name {
+			case "Future":
+				fut, ok := concrete.(*Future)
+				if !ok {
+					return false
+				}
+				if len(t.TypeArgs) == 1 {
+					return unify(t.TypeArgs[0], fut.Inner)
+				}
+			}
+			st, ok := concrete.(*Struct)
+			if !ok {
+				return true
+			}
+			_ = st
+			return true
+		default:
+			return true
+		}
+	}
+
+	params := gf.Decl.Params
+	minLen := len(params)
+	if minLen > len(argTypes) {
+		minLen = len(argTypes)
+	}
+
+	for i := 0; i < minLen; i++ {
+		if !unify(params[i].Type, argTypes[i]) {
+			return nil, false
+		}
+	}
+
+	result := make([]Type, len(gf.TypeParams))
+	for i, tp := range gf.TypeParams {
+		t, ok := inferred[tp]
+		if !ok {
+			return nil, false
+		}
+		result[i] = t
+	}
+	return result, true
+}
+
 func (c *Checker) instantiateGenericFunc(gf *GenericFunc, typeArgs []Type) (*Func, string) {
 	if len(typeArgs) != len(gf.TypeParams) {
 		c.addError(gf.Decl.Pos(), "generic function %q expects %d type arguments, got %d",
@@ -1543,8 +1675,25 @@ func (c *Checker) checkStmt(s ast.Stmt) {
 }
 
 func (c *Checker) checkTopLevelVar(s *ast.VarDeclStmt) {
-	typ := c.typeOfTypeNode(s.Type)
 	valType := c.checkExpr(s.Value)
+
+	if s.Type == nil {
+		if IsInvalid(valType) {
+			c.addError(s.Pos(), "cannot infer type for variable %q", s.Name)
+			return
+		}
+		if IsVoid(valType) {
+			c.addError(s.Pos(), "cannot infer type void for variable %q", s.Name)
+			return
+		}
+		sym := c.scope.Lookup(s.Name)
+		if sym != nil {
+			sym.Type = valType
+		}
+		return
+	}
+
+	typ := c.typeOfTypeNode(s.Type)
 
 	if !c.assignable(typ, valType) {
 		if iface, ok := typ.(*Interface); ok {
@@ -1557,18 +1706,30 @@ func (c *Checker) checkTopLevelVar(s *ast.VarDeclStmt) {
 }
 
 func (c *Checker) checkVarDecl(s *ast.VarDeclStmt) {
-	typ := c.typeOfTypeNode(s.Type)
 	valType := c.checkExpr(s.Value)
 
-	if !c.assignable(typ, valType) {
-		// Provide better error message for interface satisfaction failures
-		if iface, ok := typ.(*Interface); ok {
-			c.addInterfaceSatisfactionError(s.Value.Pos(), valType, iface, s.Name)
-		} else {
-			c.addError(s.Pos(), "cannot assign expression of type %s to variable %q of type %s",
-				valType.String(), s.Name, typ.String())
+	var typ Type
+	if s.Type == nil {
+		if IsInvalid(valType) {
+			c.addError(s.Pos(), "cannot infer type for variable %q", s.Name)
+			return
 		}
-		return
+		if IsVoid(valType) {
+			c.addError(s.Pos(), "cannot infer type void for variable %q", s.Name)
+			return
+		}
+		typ = valType
+	} else {
+		typ = c.typeOfTypeNode(s.Type)
+		if !c.assignable(typ, valType) {
+			if iface, ok := typ.(*Interface); ok {
+				c.addInterfaceSatisfactionError(s.Value.Pos(), valType, iface, s.Name)
+			} else {
+				c.addError(s.Pos(), "cannot assign expression of type %s to variable %q of type %s",
+					valType.String(), s.Name, typ.String())
+			}
+			return
+		}
 	}
 
 	if err := c.scope.Insert(&Symbol{
@@ -1678,32 +1839,78 @@ func (c *Checker) checkReturn(s *ast.ReturnStmt) {
 
 func (c *Checker) checkThrow(s *ast.ThrowStmt) {
 	t := c.checkExpr(s.Expr)
-	if !Equal(t, ErrorType) {
-		c.addError(s.Pos(), "throw expression must be of type error, got %s", t.String())
+	if Equal(t, ErrorType) {
+		return
 	}
+	if _, ok := t.(*Struct); ok {
+		if len(c.currentThrows) > 0 {
+			for _, allowed := range c.currentThrows {
+				if Equal(t, allowed) {
+					return
+				}
+			}
+			c.addError(s.Pos(), "thrown type %s is not declared in function's throws list", t.String())
+			return
+		}
+		return
+	}
+	c.addError(s.Pos(), "throw expression must be of type error or a struct type, got %s", t.String())
+}
+
+func (c *Checker) isValidCatchType(t Type) bool {
+	if Equal(t, ErrorType) {
+		return true
+	}
+	if _, ok := t.(*Struct); ok {
+		return true
+	}
+	return false
 }
 
 func (c *Checker) checkTry(s *ast.TryStmt) {
-	// Check try-body in a nested scope
 	c.checkBlock(s.Body)
 
+	if len(s.Catches) > 1 {
+		for _, clause := range s.Catches {
+			catchType := c.typeOfTypeNode(clause.Type)
+
+			if !c.isValidCatchType(catchType) {
+				c.addError(clause.Type.Pos(), "catch variable must be of type error or a struct type, got %s", catchType.String())
+				continue
+			}
+
+			prevScope := c.scope
+			c.scope = NewScope(prevScope)
+
+			_ = c.scope.Insert(&Symbol{
+				Name: clause.VarName,
+				Kind: SymVar,
+				Type: catchType,
+				Node: s,
+			})
+
+			c.checkBlock(clause.Body)
+			c.scope = prevScope
+		}
+		return
+	}
+
 	if s.CatchBody != nil {
-		// Catch must be of type error for now
 		catchType := c.typeOfTypeNode(s.CatchType)
-		if !Equal(catchType, ErrorType) {
-			c.addError(s.CatchType.Pos(), "catch variable must be of type error, got %s", catchType.String())
+
+		if !c.isValidCatchType(catchType) {
+			c.addError(s.CatchType.Pos(), "catch variable must be of type error or a struct type, got %s", catchType.String())
+			return
 		}
 
-		// New scope for catch
 		prevScope := c.scope
 		c.scope = NewScope(prevScope)
 		defer func() { c.scope = prevScope }()
 
-		// Declare catch variable
 		_ = c.scope.Insert(&Symbol{
 			Name: s.CatchName,
 			Kind: SymVar,
-			Type: ErrorType,
+			Type: catchType,
 			Node: s,
 		})
 
@@ -2325,6 +2532,7 @@ func (c *Checker) checkBuiltinMethod(m *ast.MemberExpr, receiverType Type) Type 
 	var paramTypes []Type
 	var resultType Type
 	if dictType != nil {
+		keyType := dictType.keyType()
 		valueType := dictType.ValueType
 		if valueType == nil {
 			valueType = Any
@@ -2335,21 +2543,21 @@ func (c *Checker) checkBuiltinMethod(m *ast.MemberExpr, receiverType Type) Type 
 			resultType = Int
 		case "keys":
 			paramTypes = []Type{dictType}
-			resultType = &List{ElementTypes: []Type{String}}
+			resultType = &List{ElementTypes: []Type{keyType}}
 		case "values":
 			paramTypes = []Type{dictType}
 			resultType = &List{ElementTypes: []Type{valueType}}
 		case "has":
-			paramTypes = []Type{dictType, String}
+			paramTypes = []Type{dictType, keyType}
 			resultType = Bool
 		case "get":
-			paramTypes = []Type{dictType, String}
+			paramTypes = []Type{dictType, keyType}
 			resultType = &Optional{Inner: valueType}
 		case "set":
-			paramTypes = []Type{dictType, String, valueType}
+			paramTypes = []Type{dictType, keyType, valueType}
 			resultType = Void
 		case "remove":
-			paramTypes = []Type{dictType, String}
+			paramTypes = []Type{dictType, keyType}
 			resultType = Bool
 		default:
 			return nil
@@ -2690,6 +2898,55 @@ func (c *Checker) checkGenericCall(call *ast.CallExpr) Type {
 	return fnType.Result
 }
 
+func (c *Checker) checkInferredGenericCall(call *ast.CallExpr, gf *GenericFunc) Type {
+	argTypes := make([]Type, len(call.Args))
+	for i, arg := range call.Args {
+		argTypes[i] = c.checkExpr(arg)
+	}
+
+	inferredArgs, ok := c.inferTypeArgs(gf, argTypes)
+	if !ok {
+		c.addError(call.Pos(), "cannot infer type arguments for generic function %q", gf.Decl.Name)
+		return Invalid
+	}
+
+	fnType, monoName := c.instantiateGenericFunc(gf, inferredArgs)
+	if fnType == nil {
+		return Invalid
+	}
+
+	if c.bindings != nil {
+		if ident, ok := call.Callee.(*ast.IdentExpr); ok {
+			var monoNode *ast.FunDecl
+			if decl, ok2 := c.bindings.MonomorphizedFuncs[monoName]; ok2 {
+				monoNode = decl
+			}
+			c.bindings.Idents[ident] = &Symbol{
+				Name: monoName,
+				Kind: SymFunc,
+				Type: fnType,
+				Node: monoNode,
+			}
+		}
+	}
+
+	if len(call.Args) != len(fnType.ParamTypes) {
+		c.addError(call.Pos(), "function %s expects %d arguments, got %d",
+			gf.Decl.Name, len(fnType.ParamTypes), len(call.Args))
+		return fnType.Result
+	}
+
+	for i, argType := range argTypes {
+		paramType := fnType.ParamTypes[i]
+		if !c.assignable(paramType, argType) {
+			c.addError(call.Args[i].Pos(), "cannot use expression of type %s as argument %d of type %s",
+				argType.String(), i+1, paramType.String())
+		}
+	}
+
+	return fnType.Result
+}
+
 func (c *Checker) checkCall(call *ast.CallExpr) Type {
 	// Handle generic function calls: ident<Type>(args)
 	if len(call.TypeArgs) > 0 {
@@ -2697,6 +2954,10 @@ func (c *Checker) checkCall(call *ast.CallExpr) Type {
 	}
 
 	calleeType := c.checkExpr(call.Callee)
+
+	if gf, isGeneric := calleeType.(*GenericFunc); isGeneric {
+		return c.checkInferredGenericCall(call, gf)
+	}
 
 	fnType, ok := calleeType.(*Func)
 	if !ok {
@@ -3236,10 +3497,13 @@ func (c *Checker) assignable(dst, src Type) bool {
 		return c.listAssignable(dstList, srcList)
 	}
 
-	// dict<T> := dict<U>
+	// dict<K, V> := dict<K2, V2>
 	dstDict, dstIsDict := dst.(*Dict)
 	srcDict, srcIsDict := src.(*Dict)
 	if dstIsDict && srcIsDict {
+		if !c.assignable(dstDict.keyType(), srcDict.keyType()) {
+			return false
+		}
 		dstValue := dstDict.ValueType
 		srcValue := srcDict.ValueType
 		if dstValue == nil {
@@ -3436,6 +3700,7 @@ func (c *Checker) findBuiltinMethodForDict(typ *Dict, methodName string) *Method
 	if methodBuiltin == nil {
 		return nil
 	}
+	keyType := typ.keyType()
 	valueType := typ.ValueType
 	if valueType == nil {
 		valueType = Any
@@ -3448,21 +3713,21 @@ func (c *Checker) findBuiltinMethodForDict(typ *Dict, methodName string) *Method
 		resultType = Int
 	case "keys":
 		paramTypes = []Type{typ}
-		resultType = &List{ElementTypes: []Type{String}}
+		resultType = &List{ElementTypes: []Type{keyType}}
 	case "values":
 		paramTypes = []Type{typ}
 		resultType = &List{ElementTypes: []Type{valueType}}
 	case "has":
-		paramTypes = []Type{typ, String}
+		paramTypes = []Type{typ, keyType}
 		resultType = Bool
 	case "get":
-		paramTypes = []Type{typ, String}
+		paramTypes = []Type{typ, keyType}
 		resultType = &Optional{Inner: valueType}
 	case "set":
-		paramTypes = []Type{typ, String, valueType}
+		paramTypes = []Type{typ, keyType, valueType}
 		resultType = Void
 	case "remove":
-		paramTypes = []Type{typ, String}
+		paramTypes = []Type{typ, keyType}
 		resultType = Bool
 	default:
 		return nil

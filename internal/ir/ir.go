@@ -55,6 +55,9 @@ const (
 	OpEndTry   // remove handler for current frame
 	OpThrow    // pop exception value and throw
 
+	// Type matching
+	OpIsStructType // A = struct type index; peek top, push bool (true if struct with TypeIndex == A)
+
 	// Closures
 	OpClosure      // A = function index, B = number of upvalues
 	OpLoadUpvalue  // A = upvalue index

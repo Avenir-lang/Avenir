@@ -1,7 +1,10 @@
 # Dictionaries (`dict`)
 
-`dict` is Avenir's first-class dictionary type. Keys are always `string`, and
-values are statically typed.
+`dict` is Avenir's first-class generic dictionary type with the full form
+`dict<K, V>` where `K` is the key type and `V` is the value type.
+
+The shorthand `dict<V>` is equivalent to `dict<string, V>` (string keys by
+default).
 
 ## Syntax
 
@@ -24,14 +27,22 @@ Trailing commas are optional.
 
 ## Types
 
-Dictionary types are written as `dict<T>` where `T` is the value type:
+Dictionary types can be written in two forms:
+
+**Short form** — `dict<V>` (key type defaults to `string`):
 
 ```avenir
 var scores | dict<int> = { alice: 10, bob: 12 };
 var meta   | dict<any> = { env: "dev", retries: 3 };
 ```
 
-All values in the literal must be assignable to `T`. Mixed value types require
+**Full form** — `dict<K, V>` (explicit key and value types):
+
+```avenir
+var scores | dict<string, int> = { math: 95, science: 88 };
+```
+
+All values in the literal must be assignable to `V`. Mixed value types require
 an explicit union type:
 
 ```avenir
@@ -57,15 +68,17 @@ key may be missing.
 
 ## Built-in Methods
 
+For a `dict<K, V>`:
+
 | Method | Parameters | Returns | Notes |
 | --- | --- | --- | --- |
 | `length()` | — | `int` | Number of entries |
-| `keys()` | — | `list<string>` | Order not guaranteed |
-| `values()` | — | `list<T>` | Order not guaranteed |
-| `has(key)` | `string` | `bool` | Presence check |
-| `get(key)` | `string` | `T?` | `none` if missing |
-| `set(key, value)` | `string`, `T` | `void` | Mutates in place |
-| `remove(key)` | `string` | `bool` | Returns whether key existed |
+| `keys()` | — | `list<K>` | Order not guaranteed |
+| `values()` | — | `list<V>` | Order not guaranteed |
+| `has(key)` | `K` | `bool` | Presence check |
+| `get(key)` | `K` | `V?` | `none` if missing |
+| `set(key, value)` | `K`, `V` | `void` | Mutates in place |
+| `remove(key)` | `K` | `bool` | Returns whether key existed |
 
 ## Dicts vs Structs
 
@@ -77,3 +90,5 @@ dynamic data.
 
 - Dicts are backed by a hash map; iteration order is not guaranteed.
 - `dict.set` mutates the dictionary in place.
+- The runtime currently supports only `string` keys. The `K` type parameter
+  enables future key type expansion without syntax changes.

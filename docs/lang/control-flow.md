@@ -174,7 +174,44 @@ try {
 }
 ```
 
-The catch variable must be of type `error`. The catch block is executed if an exception is thrown in the try block, including runtime and builtin errors.
+The catch variable can be of type `error` or a struct type. The catch block is
+executed if an exception is thrown in the try block, including runtime and
+builtin errors.
+
+### Typed Catch Clauses
+
+Try statements support multiple typed catch clauses for matching specific error
+types. Clauses are evaluated in order; the first matching clause handles the
+error:
+
+```avenir
+struct FileNotFound {
+    path | string;
+}
+
+struct PermissionDenied {
+    file | string;
+}
+
+fun riskyOp() | void ! FileNotFound, PermissionDenied {
+    throw FileNotFound{path = "/tmp/missing.txt"};
+}
+
+fun main() | void {
+    try {
+        riskyOp();
+    } catch (e | FileNotFound) {
+        print("not found: " + e.path);
+    } catch (e | PermissionDenied) {
+        print("denied: " + e.file);
+    } catch (e | error) {
+        print("other error");
+    }
+}
+```
+
+A `catch (e | error)` clause acts as a fallback that catches any error not
+matched by preceding clauses.
 
 ### Throw Statements
 
@@ -184,7 +221,29 @@ Throw statements raise exceptions:
 throw error("something went wrong");
 ```
 
-The expression must be of type `error`.
+The expression can be of type `error` or a declared struct type.
+
+### Throws Declarations
+
+Functions can declare which error types they may throw using the `!` syntax
+after the return type:
+
+```avenir
+fun readFile(path | string) | string ! FileNotFound {
+    throw FileNotFound{path = path};
+}
+```
+
+Multiple thrown types are separated by commas:
+
+```avenir
+fun process() | void ! FileNotFound, PermissionDenied {
+    // ...
+}
+```
+
+The type checker validates that `throw` expressions inside the function body
+match the declared throws types.
 
 ## Deferred Calls
 

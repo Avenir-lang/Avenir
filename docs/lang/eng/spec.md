@@ -16,12 +16,12 @@ docs in this directory.
 ## Types
 
 - Primitives: `int`, `float`, `string`, `bool`, `bytes`, `void`, `any`, `error`
-- Composite: `list<T>`, `dict<T>` (string keys), function types `fun(...) | T`
+- Composite: `list<T>`, `dict<K, V>` (or `dict<V>` for string keys), function types `fun(...) | T`
 - Optional: `T?`
 - Union: `<T1|T2|...>`
 - Struct and interface types
 - Generic user-defined struct/function declarations: `Name<T, U, ...>`
-- Generic usages require explicit type arguments (no inference)
+- Generic usages support type argument inference from call arguments
 
 ## Expressions
 
@@ -36,7 +36,8 @@ docs in this directory.
 - Variable declarations: `var name | Type = expr;`
 - Assignment: `name = expr;`
 - `if`, `while`, `for`, `for (item in list)` loops.
-- `return`, `break`, `throw`, `try/catch`.
+- `return`, `break`, `throw`, `try/catch` (with typed catch clauses).
+- Variable declarations with type inference: `var name = expr;`
 
 ## Modules
 
@@ -49,6 +50,9 @@ docs in this directory.
 
 - All runtime errors (including builtins) are thrown as `error` values and are
   catchable via `try / catch`.
+- Functions can declare thrown error types: `fun f() | void ! MyError { ... }`
+- Catch clauses can match specific struct error types:
+  `catch (e | MyError) { ... } catch (e | error) { ... }`
 - Built-in functions and methods are part of the language core and are invoked
   directly by the VM.
 

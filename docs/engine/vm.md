@@ -128,8 +128,12 @@ Runtime errors are converted to `error` values and thrown:
 - `raiseError(err)` wraps the error into `value.ErrorValue`
 - `throwValue` unwinds to the nearest handler installed by `OpBeginTry`
 
-Thrown non‑error values are wrapped as `error` with the message
-`"thrown non-error: ..."` for consistency.
+Struct values thrown via `OpThrow` are passed through to catch handlers without
+wrapping, enabling typed catch clauses to match on struct type.
+
+`OpIsStructType` peeks TOS and pushes `true`/`false` indicating whether the
+value is a struct matching the given type index. This is used by the typed catch
+clause dispatch chain.
 
 ## Closures and Upvalues
 

@@ -659,6 +659,19 @@ func (p *Parser) parseFunDecl() *ast.FunDecl {
 	p.expect(token.Pipe)
 	retType := p.parseType()
 
+	var throws []ast.TypeNode
+	if p.cur.Kind == token.Bang {
+		p.nextToken()
+		for {
+			throws = append(throws, p.parseType())
+			if p.cur.Kind == token.Pipe {
+				p.nextToken()
+				continue
+			}
+			break
+		}
+	}
+
 	body := p.parseBlock()
 
 	return &ast.FunDecl{
@@ -669,6 +682,7 @@ func (p *Parser) parseFunDecl() *ast.FunDecl {
 		Params:        params,
 		VariadicParam: variadicParam,
 		Return:        retType,
+		Throws:        throws,
 		Body:          body,
 		IsPublic:      isPublic,
 		IsAsync:       isAsync,
@@ -734,6 +748,19 @@ func (p *Parser) parseFuncLiteral() ast.Expr {
 	p.expect(token.Pipe)
 	res := p.parseType()
 
+	var throws []ast.TypeNode
+	if p.cur.Kind == token.Bang {
+		p.nextToken()
+		for {
+			throws = append(throws, p.parseType())
+			if p.cur.Kind == token.Pipe {
+				p.nextToken()
+				continue
+			}
+			break
+		}
+	}
+
 	body := p.parseBlock()
 
 	return &ast.FuncLiteral{
@@ -741,6 +768,7 @@ func (p *Parser) parseFuncLiteral() ast.Expr {
 		Params:        params,
 		VariadicParam: variadicParam,
 		Return:        res,
+		Throws:        throws,
 		Body:          body,
 	}
 }
@@ -877,13 +905,15 @@ func (p *Parser) parseType() ast.TypeNode {
 		} else {
 			p.nextToken()
 		}
-		valueType := p.parseType()
+		firstType := p.parseType()
+		var keyType ast.TypeNode
+		var valueType ast.TypeNode
 		if p.cur.Kind == token.Comma {
-			p.errorf(p.cur.Pos, "dict expects a single value type")
-			for p.cur.Kind == token.Comma {
-				p.nextToken()
-				_ = p.parseType()
-			}
+			p.nextToken()
+			keyType = firstType
+			valueType = p.parseType()
+		} else {
+			valueType = firstType
 		}
 		if p.cur.Kind != token.Gt {
 			p.errorf(p.cur.Pos, "expected '>' at end of dict type")
@@ -892,6 +922,7 @@ func (p *Parser) parseType() ast.TypeNode {
 		}
 		dictType := &ast.DictType{
 			DictPos:   dictTok.Pos,
+			KeyType:   keyType,
 			ValueType: valueType,
 		}
 		if p.cur.Kind == token.Question {
@@ -1233,8 +1264,11 @@ func (p *Parser) parseVarDeclStmt() ast.Stmt {
 	nameTok := p.cur
 	p.nextToken()
 
-	p.expect(token.Pipe)
-	typ := p.parseType()
+	var typ ast.TypeNode
+	if p.cur.Kind == token.Pipe {
+		p.nextToken()
+		typ = p.parseType()
+	}
 
 	p.expect(token.Assign)
 	value := p.parseExpr()
@@ -1556,7 +1590,6 @@ func (p *Parser) parseTryStmt() ast.Stmt {
 	tryTok := p.cur
 	p.nextToken()
 
-	// expect block for try body
 	body := p.parseBlock()
 
 	ts := &ast.TryStmt{
@@ -1564,10 +1597,10 @@ func (p *Parser) parseTryStmt() ast.Stmt {
 		Body:   body,
 	}
 
-	if p.cur.Kind == token.Catch {
+	for p.cur.Kind == token.Catch {
+		catchTok := p.cur
 		p.nextToken()
 
-		// catch (e | error) { ... }
 		p.expect(token.LParen)
 
 		if p.cur.Kind != token.Ident {
@@ -1583,10 +1616,21 @@ func (p *Parser) parseTryStmt() ast.Stmt {
 
 		catchBody := p.parseBlock()
 
-		ts.CatchName = nameTok.Lexeme
-		ts.CatchPos = nameTok.Pos
-		ts.CatchType = catchType
-		ts.CatchBody = catchBody
+		clause := &ast.CatchClause{
+			CatchPos: catchTok.Pos,
+			VarName:  nameTok.Lexeme,
+			VarPos:   nameTok.Pos,
+			Type:     catchType,
+			Body:     catchBody,
+		}
+		ts.Catches = append(ts.Catches, clause)
+	}
+
+	if len(ts.Catches) == 1 {
+		ts.CatchName = ts.Catches[0].VarName
+		ts.CatchPos = ts.Catches[0].VarPos
+		ts.CatchType = ts.Catches[0].Type
+		ts.CatchBody = ts.Catches[0].Body
 	}
 
 	return ts

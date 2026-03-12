@@ -95,6 +95,7 @@ type FunDecl struct {
 	Params        []*Param
 	VariadicParam *VariadicParam // nil or variadic param (args... | Args...)
 	Return        TypeNode
+	Throws        []TypeNode // error types after "!", e.g. fun f() | int ! MyError | OtherError
 	Body          *BlockStmt
 	IsPublic      bool // true if declared with "pub fun"
 	IsAsync       bool // true if declared with "async fun"
@@ -202,6 +203,7 @@ func (t *ListType) typeNode()           {}
 
 type DictType struct {
 	DictPos   token.Position
+	KeyType   TypeNode // nil means string (backward compat dict<V>)
 	ValueType TypeNode
 }
 
@@ -366,13 +368,24 @@ type DeferStmt struct {
 func (s *DeferStmt) Pos() token.Position { return s.DeferPos }
 func (s *DeferStmt) stmtNode()           {}
 
+type CatchClause struct {
+	CatchPos token.Position
+	VarName  string         // catch variable name, e.g., "e"
+	VarPos   token.Position // position of the variable name
+	Type     TypeNode       // catch type (error, or struct type)
+	Body     *BlockStmt
+}
+
+func (c *CatchClause) Pos() token.Position { return c.CatchPos }
+
 type TryStmt struct {
 	TryPos    token.Position
 	Body      *BlockStmt
-	CatchName string         // identifier name, e.g., "e"
-	CatchPos  token.Position // position of the identifier
-	CatchType TypeNode       // currently expected to be SimpleType "error"
-	CatchBody *BlockStmt     // nil if no catch
+	CatchName string         // identifier name, e.g., "e" (legacy single catch)
+	CatchPos  token.Position // position of the identifier (legacy single catch)
+	CatchType TypeNode       // currently expected to be SimpleType "error" (legacy single catch)
+	CatchBody *BlockStmt     // nil if no catch (legacy single catch)
+	Catches   []*CatchClause // typed catch clauses
 }
 
 func (s *TryStmt) Pos() token.Position { return s.TryPos }
@@ -555,6 +568,7 @@ type FuncLiteral struct {
 	Params        []*Param
 	VariadicParam *VariadicParam // nil or variadic param (args... | Args...)
 	Return        TypeNode
+	Throws        []TypeNode // error types after "!"
 	Body          *BlockStmt
 }
 

@@ -39,6 +39,7 @@ type Program struct {
 - `Name`, `Params`, `Return`
 - Optional `Receiver` for instance/static methods
 - `IsPublic` for `pub fun`
+- `Throws []TypeNode` for declared error types (`! ErrorType`)
 
 Receiver kinds:
 
@@ -64,7 +65,7 @@ Key `TypeNode` variants:
 - `SimpleType` (builtins and local names)
 - `QualifiedType` (`net.Socket`)
 - `ListType` (`list<T1, T2>`)
-- `DictType` (`dict<T>`)
+- `DictType` (`dict<K, V>` or `dict<V>`)
 - `FuncType` (`fun(...) | T`)
 - `UnionType` (`<A|B|...>`)
 - `OptionalType` (`T?`)
@@ -81,7 +82,7 @@ Important statement nodes:
 - `ForStmt`
 - `ForEachStmt`
 - `ReturnStmt`
-- `TryStmt`
+- `TryStmt` (with `Catches []*CatchClause` for typed catch clauses)
 - `ThrowStmt`
 - `BreakStmt`
 - `ExprStmt`

@@ -61,7 +61,7 @@ Key instruction categories include:
 - **Fields**: `OpLoadField`, `OpStoreField`
 - **Strings**: `OpStringify`, `OpConcatString`
 - **Optionals**: `OpMakeSome`
-- **Exceptions**: `OpBeginTry`, `OpEndTry`, `OpThrow`
+- **Exceptions**: `OpBeginTry`, `OpEndTry`, `OpThrow`, `OpIsStructType`
 - **Closures**: `OpClosure`, `OpLoadUpvalue`, `OpStoreUpvalue`
 - **Async**: `OpSpawn`, `OpAwait`
 
@@ -124,6 +124,17 @@ The compiler builds a `structIndex` map from struct names to type indices:
 2. try‑block instructions
 3. `OpEndTry`
 4. handler block
+
+When multiple typed catch clauses are present, the handler block emits a chain:
+
+1. For each `catch (var | StructType)`:
+   - `OpIsStructType A` (A = struct type index) — peeks TOS, pushes bool
+   - `OpJumpIfFalse` to next clause
+   - Store thrown value in local, execute clause body, `OpJump` to end
+2. For `catch (var | error)`: unconditional fallback clause
+3. Final `OpThrow` re-throws unmatched errors
+
+Each clause has its own local scope to prevent variable redefinition.
 
 ### Switch / Continue
 
