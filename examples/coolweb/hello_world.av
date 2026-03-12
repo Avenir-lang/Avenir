@@ -2,7 +2,7 @@ pckg main;
 
 import std.coolweb;
 
-var app | coolweb.App = coolweb.newApp();
+var app = coolweb.newApp();
 
 @app.get("/")
 fun index(ctx | coolweb.Context) | coolweb.Response {
