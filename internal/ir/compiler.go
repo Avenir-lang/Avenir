@@ -2,6 +2,7 @@ package ir
 
 import (
 	"fmt"
+	"strings"
 
 	"avenir/internal/ast"
 	"avenir/internal/resolver"
@@ -614,6 +615,30 @@ func (c *Compiler) addError(pos token.Position, format string, args ...interface
 	c.errors = append(c.errors, fmt.Errorf("%s", msg))
 }
 
+func topoSortModules(world *types.World) []string {
+	visited := make(map[string]bool)
+	var order []string
+	var visit func(name string)
+	visit = func(name string) {
+		if visited[name] {
+			return
+		}
+		visited[name] = true
+		modInfo := world.Modules[name]
+		if modInfo != nil && modInfo.Prog != nil {
+			for _, imp := range modInfo.Prog.Imports {
+				depName := strings.Join(imp.Path, ".")
+				visit(depName)
+			}
+		}
+		order = append(order, name)
+	}
+	for name := range world.Modules {
+		visit(name)
+	}
+	return order
+}
+
 func (c *Compiler) generateInitFunc(bindings *types.Bindings, funcIndexByDecl map[*ast.FunDecl]int) {
 	hasDecorators := bindings != nil && len(bindings.Decorators) > 0
 	hasGlobals := len(c.mod.Globals) > 0
@@ -636,7 +661,13 @@ func (c *Compiler) generateInitFunc(bindings *types.Bindings, funcIndexByDecl ma
 	}
 
 	// Phase 1: Initialize top-level variables (before decorators)
-	for _, modInfo := range c.world.Modules {
+	// Modules must be initialized in dependency order (imports first).
+	sortedModNames := topoSortModules(c.world)
+	for _, modName := range sortedModNames {
+		modInfo := c.world.Modules[modName]
+		if modInfo == nil {
+			continue
+		}
 		for _, v := range modInfo.Prog.Vars {
 			gIdx, ok := c.globalIndex[v.Name]
 			if !ok {
@@ -2448,5 +2479,16 @@ func (fc *funcCompiler) compileCall(call *ast.CallExpr) {
 	}
 
 	fc.compileExpr(call.Callee)
-	fc.chunk.Emit(OpCallValue, len(call.Args), 0)
+	// If callee's type returns Future, set B=1 so the VM spawns it as a child task.
+	spawnFlag := 0
+	if fc.c.bindings != nil {
+		if calleeType, ok := fc.c.bindings.ExprTypes[call.Callee]; ok {
+			if ft, ok2 := calleeType.(*types.Func); ok2 {
+				if _, isFut := ft.Result.(*types.Future); isFut {
+					spawnFlag = 1
+				}
+			}
+		}
+	}
+	fc.chunk.Emit(OpCallValue, len(call.Args), spawnFlag)
 }

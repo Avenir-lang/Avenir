@@ -1,0 +1,39 @@
+pckg std.sql;
+
+struct errors {}
+
+pub fun connectionError(message | string) | error {
+    return error("sql: connection error: " + message);
+}
+
+pub fun queryError(message | string) | error {
+    return error("sql: query error: " + message);
+}
+
+pub fun queryErrorWithSql(message | string, sqlText | string) | error {
+    return error("sql: query error: " + message + " [sql: " + sqlText + "]");
+}
+
+pub fun transactionError(message | string) | error {
+    return error("sql: transaction error: " + message);
+}
+
+pub fun driverError(message | string) | error {
+    return error("sql: driver error: " + message);
+}
+
+pub fun typeError(column | string, expected | string, actual | string) | error {
+    return error("sql: type error: column '" + column + "' expected " + expected + ", got " + actual);
+}
+
+pub fun columnNotFoundError(column | string) | error {
+    return error("sql: column not found: " + column);
+}
+
+pub fun poolExhaustedError() | error {
+    return error("sql: connection pool exhausted");
+}
+
+pub fun closedError(resource | string) | error {
+    return error("sql: " + resource + " is closed");
+}

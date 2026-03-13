@@ -982,7 +982,7 @@ func (c *Checker) validateDecoratorFunc(dec *ast.Decorator, decFunc *Func, fnTyp
 		c.addError(dec.AtPos, "decorator parameter must be a function type, got %s", decFunc.ParamTypes[0].String())
 		return nil
 	}
-	if !Equal(paramFn, fnType) {
+	if !Equal(paramFn, fnType) && !c.asyncFuncCompatible(paramFn, fnType) {
 		c.addError(dec.AtPos, "decorator expects function of type %s, but decorated function has type %s", paramFn.String(), fnType.String())
 		return nil
 	}
@@ -991,7 +991,7 @@ func (c *Checker) validateDecoratorFunc(dec *ast.Decorator, decFunc *Func, fnTyp
 		c.addError(dec.AtPos, "decorator must return a function type, got %s", decFunc.Result.String())
 		return nil
 	}
-	if !Equal(retFn, fnType) {
+	if !Equal(retFn, fnType) && !c.asyncFuncCompatible(retFn, fnType) {
 		c.addError(dec.AtPos, "decorator returns function of type %s, but decorated function has type %s", retFn.String(), fnType.String())
 		return nil
 	}
@@ -999,6 +999,22 @@ func (c *Checker) validateDecoratorFunc(dec *ast.Decorator, decFunc *Func, fnTyp
 		Expr:     dec.Expr,
 		FuncType: decFunc,
 	}
+}
+
+func (c *Checker) asyncFuncCompatible(expected *Func, actual *Func) bool {
+	if len(expected.ParamTypes) != len(actual.ParamTypes) {
+		return false
+	}
+	for i, p := range expected.ParamTypes {
+		if !Equal(p, actual.ParamTypes[i]) {
+			return false
+		}
+	}
+	fut, ok := actual.Result.(*Future)
+	if !ok {
+		return false
+	}
+	return Equal(expected.Result, fut.Inner)
 }
 
 func (c *Checker) checkGenericDecorator(dec *ast.Decorator, gf *GenericFunc, fnType *Func) *DecoratorInfo {
@@ -3388,6 +3404,14 @@ func (c *Checker) checkBinary(b *ast.BinaryExpr) Type {
 				return Invalid
 			}
 			return Bool
+		}
+		// Allow T? == any? (for == none comparisons)
+		leftOpt, leftIsOpt := left.(*Optional)
+		rightOpt, rightIsOpt := right.(*Optional)
+		if leftIsOpt && rightIsOpt {
+			if Equal(leftOpt.Inner, Any) || Equal(rightOpt.Inner, Any) {
+				return Bool
+			}
 		}
 		// Simplified: types must match or one of them must be any
 		if !(Equal(left, right) || Equal(left, Any) || Equal(right, Any)) {

@@ -1,0 +1,51 @@
+pckg main;
+
+import std.sql;
+import std.sql.postgres;
+
+async fun main() | void {
+    postgres.register();
+
+    var db | sql.DB = sql.open("postgres://user:pass@localhost:5432/mydb");
+
+    await db.exec(
+        "CREATE TABLE IF NOT EXISTS accounts (id SERIAL PRIMARY KEY, name TEXT, balance INT)",
+        []
+    );
+    await db.exec("INSERT INTO accounts(name, balance) VALUES($1, $2)", ["Alice", 1000]);
+    await db.exec("INSERT INTO accounts(name, balance) VALUES($1, $2)", ["Bob", 500]);
+
+    print("--- Transfer $200 from Alice to Bob ---");
+
+    var tx | sql.Transaction = await db.begin();
+
+    try {
+        await tx.exec(
+            "UPDATE accounts SET balance = balance - $1 WHERE name = $2",
+            [200, "Alice"]
+        );
+
+        await tx.exec(
+            "UPDATE accounts SET balance = balance + $1 WHERE name = $2",
+            [200, "Bob"]
+        );
+
+        await tx.commit();
+        print("Transfer committed successfully");
+    } catch (e | error) {
+        await tx.rollback();
+        print("Transfer failed, rolled back: " + errorMessage(e));
+    }
+
+    print("--- Balances after transfer ---");
+    var rows | sql.Rows = await db.query("SELECT name, balance FROM accounts", []);
+
+    while (rows.next()) {
+        var name | string = rows.getString("name");
+        var balance | int = rows.getInt("balance");
+        print("${name}: $${balance}");
+    }
+    rows.close();
+
+    await db.close();
+}

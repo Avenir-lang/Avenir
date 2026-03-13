@@ -1,0 +1,21 @@
+pckg main;
+
+import std.sql;
+import std.sql.sqlite;
+
+async fun main() | void {
+    print("Registering sqlite...");
+    sqlite.register();
+    print("Registered.");
+
+    print("Opening DB...");
+    var db | sql.DB = sql.open("sqlite://:memory:");
+    print("DB created (pool initialized, no connection yet).");
+
+    print("About to exec (this triggers pool.acquire)...");
+    await db.exec("CREATE TABLE test (id INTEGER PRIMARY KEY)", []);
+    print("Table created!");
+
+    await db.close();
+    print("Done!");
+}

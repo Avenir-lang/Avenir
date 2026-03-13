@@ -1,0 +1,91 @@
+pckg std.sql;
+
+struct rows {}
+
+pub mut struct Rows {
+    pub columns | list<string>
+    pub mut _data | list<any>
+    pub mut _index | int
+    pub mut _current | any
+    pub mut _hasRow | bool
+    pub mut _closed | bool
+}
+
+pub fun newRows(columns | list<string>, data | list<any>) | Rows {
+    return Rows{
+        columns = columns,
+        _data = data,
+        _index = -1,
+        _current = 0,
+        _hasRow = false,
+        _closed = false
+    };
+}
+
+pub fun emptyRows() | Rows {
+    return newRows([], []);
+}
+
+pub fun (r | Rows).next() | bool {
+    if (r._closed) {
+        throw closedError("rows");
+    }
+    r._index = r._index + 1;
+    if (r._index >= r._data.length()) {
+        r._hasRow = false;
+        return false;
+    }
+    var rowData | dict<any> = r._data.get(r._index);
+    r._current = newRow(r.columns, rowData);
+    r._hasRow = true;
+    return true;
+}
+
+fun (r | Rows).currentRow() | Row {
+    if (!r._hasRow) {
+        throw queryError("no current row: call next() first");
+    }
+    var current | Row = r._current;
+    return current;
+}
+
+pub fun (r | Rows).getInt(col | string) | int {
+    return r.currentRow().getInt(col);
+}
+
+pub fun (r | Rows).getString(col | string) | string {
+    return r.currentRow().getString(col);
+}
+
+pub fun (r | Rows).getBool(col | string) | bool {
+    return r.currentRow().getBool(col);
+}
+
+pub fun (r | Rows).getFloat(col | string) | float {
+    return r.currentRow().getFloat(col);
+}
+
+pub fun (r | Rows).getBytes(col | string) | bytes {
+    return r.currentRow().getBytes(col);
+}
+
+pub fun (r | Rows).getAny(col | string) | any {
+    return r.currentRow().getAny(col);
+}
+
+pub fun (r | Rows).isNull(col | string) | bool {
+    return r.currentRow().isNull(col);
+}
+
+pub fun (r | Rows).row() | Row {
+    return r.currentRow();
+}
+
+pub fun (r | Rows).count() | int {
+    return r._data.length();
+}
+
+pub fun (r | Rows).close() | void {
+    r._closed = true;
+    r._hasRow = false;
+}

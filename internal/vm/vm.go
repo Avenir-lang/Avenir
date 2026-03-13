@@ -676,8 +676,16 @@ func (vm *VM) callClosure(clo *value.Closure, numArgs int) (value.Value, error) 
 				cloVal := value.NewClosure(fn, nil)
 				clo = cloVal.Closure
 			}
+			// Pre-advance caller's IP past OpCall before entering callClosure.
+			// If the callee suspends (async await), the saved frame must have
+			// IP past this instruction so we don't re-execute OpCall on resume.
+			vm.frames[len(vm.frames)-1].IP++
+			shouldIncrementIP = false
 			retVal, err := vm.callClosure(clo, inst.B)
 			if err != nil {
+				if err == errSuspended {
+					return value.Value{}, errSuspended
+				}
 				if vm.raiseError(err) {
 					skipIncrement = true
 					continue
@@ -702,15 +710,81 @@ func (vm *VM) callClosure(clo *value.Closure, numArgs int) (value.Value, error) 
 				}
 				return value.Value{}, fmt.Errorf("OpCallValue: expected closure, got %v", callee.Kind)
 			}
-			retVal, err := vm.callClosure(callee.Closure, inst.A)
-			if err != nil {
-				if vm.raiseError(err) {
-					skipIncrement = true
-					continue
+			numArgs := inst.A
+			// inst.B=1: compiler signals this closure returns Future and must be spawned.
+			if inst.B == 1 && vm.scheduler != nil {
+				spawnArgs := make([]value.Value, numArgs)
+				for i := numArgs - 1; i >= 0; i-- {
+					arg, popErr := vm.pop()
+					if popErr != nil {
+						if vm.raiseError(popErr) {
+							skipIncrement = true
+							continue
+						}
+						return value.Value{}, popErr
+					}
+					spawnArgs[i] = arg
 				}
-				return value.Value{}, err
+				fut := runtime.NewFuture()
+				childVM := vm.spawnChild()
+				spawnClo := callee.Closure
+				for _, arg := range spawnArgs {
+					childVM.push(arg)
+				}
+				childTC := &taskContext{future: fut}
+				childResumed := false
+				var childTask *runtime.Task
+				childTask = vm.scheduler.NewTask(fut, func() (status runtime.TaskStatus, retErr error) {
+					defer func() {
+						if r := recover(); r != nil {
+							retErr = fmt.Errorf("panic in spawned task: %v", r)
+							status = runtime.TaskFailed
+						}
+					}()
+					childTC.task = childTask
+					childVM.currentTask = childTC
+					childVM.suspended = false
+					if childResumed {
+						childVM.stack = make([]value.Value, 4096)
+						copy(childVM.stack, childTC.stack)
+						childVM.sp = childTC.sp
+						childVM.frames = childTC.frames
+						childVM.handlers = childTC.handlers
+						childVM.resuming = true
+					}
+					result, callErr := childVM.callClosure(spawnClo, numArgs)
+					if callErr != nil {
+						if errors.Is(callErr, errSuspended) {
+							childResumed = true
+							return runtime.TaskSuspended, nil
+						}
+						return runtime.TaskFailed, callErr
+					}
+					fut.Resolve(result)
+					return runtime.TaskDone, nil
+				})
+				vm.scheduler.Schedule(childTask)
+				vm.push(value.FutureVal(fut))
+			} else {
+				// Synchronous closure call (or no scheduler).
+				// Pre-advance caller's IP past OpCallValue before entering callClosure.
+				// If the callee suspends (async await), the saved frame state must have
+				// IP past this instruction so we don't re-execute OpCallValue on resume.
+				vm.frames[len(vm.frames)-1].IP++
+				shouldIncrementIP = false
+				retVal, err := vm.callClosure(callee.Closure, numArgs)
+				if err != nil {
+					if err == errSuspended {
+						return value.Value{}, errSuspended
+					}
+					if vm.raiseError(err) {
+						skipIncrement = true
+						continue
+					}
+					return value.Value{}, err
+				}
+				lastRet = retVal
 			}
-			lastRet = retVal
 
 		case ir.OpCallBuiltin:
 			builtinID := builtins.ID(inst.A)

@@ -1,0 +1,44 @@
+pckg main;
+
+import std.sql;
+import std.sql.postgres;
+
+async fun main() | void {
+    postgres.register();
+
+    var db | sql.DB = sql.open("postgres://user:pass@localhost:5432/mydb");
+
+    var result | sql.ExecResult = await db.exec(
+        "CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, name TEXT, age INT)",
+        []
+    );
+
+    await db.exec("INSERT INTO users(name, age) VALUES($1, $2)", ["Alice", 30]);
+    await db.exec("INSERT INTO users(name, age) VALUES($1, $2)", ["Bob", 25]);
+    await db.exec("INSERT INTO users(name, age) VALUES($1, $2)", ["Charlie", 35]);
+
+    print("--- All users ---");
+    var rows | sql.Rows = await db.query("SELECT id, name, age FROM users", []);
+
+    while (rows.next()) {
+        var id | int = rows.getInt("id");
+        var name | string = rows.getString("name");
+        var age | int = rows.getInt("age");
+        print("${id}: ${name} (age ${age})");
+    }
+    rows.close();
+
+    print("--- Single user lookup ---");
+    var row | sql.Row? = await db.queryRow(
+        "SELECT name, age FROM users WHERE age > $1",
+        [28]
+    );
+
+    if (row != none) {
+        var r | any = row;
+        var theRow | sql.Row = r;
+        print("Found: " + theRow.getString("name"));
+    }
+
+    await db.close();
+}

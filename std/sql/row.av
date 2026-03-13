@@ -1,0 +1,71 @@
+pckg std.sql;
+
+struct row {}
+
+pub struct Row {
+    pub columns | list<string>
+    pub values | dict<any>
+}
+
+pub fun newRow(columns | list<string>, values | dict<any>) | Row {
+    return Row{columns = columns, values = values};
+}
+
+pub fun (r | Row).has(col | string) | bool {
+    return r.values.has(col);
+}
+
+pub fun (r | Row).getAny(col | string) | any {
+    if (!r.values.has(col)) {
+        throw columnNotFoundError(col);
+    }
+    return r.values[col];
+}
+
+pub fun (r | Row).getInt(col | string) | int {
+    var val | any = r.getAny(col);
+    if (typeOf(val) != "int") {
+        throw typeError(col, "int", typeOf(val));
+    }
+    return val;
+}
+
+pub fun (r | Row).getString(col | string) | string {
+    var val | any = r.getAny(col);
+    if (typeOf(val) != "string") {
+        throw typeError(col, "string", typeOf(val));
+    }
+    return val;
+}
+
+pub fun (r | Row).getBool(col | string) | bool {
+    var val | any = r.getAny(col);
+    if (typeOf(val) != "bool") {
+        throw typeError(col, "bool", typeOf(val));
+    }
+    return val;
+}
+
+pub fun (r | Row).getFloat(col | string) | float {
+    var val | any = r.getAny(col);
+    var t | string = typeOf(val);
+    if (t != "float" && t != "int") {
+        throw typeError(col, "float", t);
+    }
+    return val;
+}
+
+pub fun (r | Row).getBytes(col | string) | bytes {
+    var val | any = r.getAny(col);
+    if (typeOf(val) != "bytes") {
+        throw typeError(col, "bytes", typeOf(val));
+    }
+    return val;
+}
+
+pub fun (r | Row).isNull(col | string) | bool {
+    if (!r.values.has(col)) {
+        throw columnNotFoundError(col);
+    }
+    return r.values[col] == none;
+}

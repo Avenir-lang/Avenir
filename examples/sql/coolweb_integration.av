@@ -1,0 +1,91 @@
+pckg main;
+
+import std.coolweb;
+import std.sql;
+import std.sql.postgres;
+
+var app | coolweb.App = coolweb.newApp();
+var db | sql.DB = sql.open("postgres://user:pass@localhost:5432/mydb", maxConnections = 10);
+
+@app.get("/users")
+async fun listUsers(ctx | coolweb.Context) | coolweb.Response {
+    var rows | sql.Rows = await db.query("SELECT id, name, email FROM users", []);
+    var users | list<any> = [];
+
+    while (rows.next()) {
+        var uid | int = rows.getInt("id");
+        var uname | string = rows.getString("name");
+        var uemail | string = rows.getString("email");
+        users = users.append({
+            "id": uid,
+            "name": uname,
+            "email": uemail
+        });
+    }
+    rows.close();
+
+    return ctx.json(users);
+}
+
+@app.get("/users/:id")
+async fun getUser(ctx | coolweb.Context) | coolweb.Response {
+    var id | string = ctx.params["id"];
+    var row | sql.Row? = await db.queryRow(
+        "SELECT id, name, email FROM users WHERE id = $1",
+        [id]
+    );
+
+    if (row == none) {
+        return ctx.json({ "error": "user not found" }, 404);
+    }
+
+    var rAny | any = row;
+    var r | sql.Row = rAny;
+    var rid | int = r.getInt("id");
+    var rname | string = r.getString("name");
+    var remail | string = r.getString("email");
+    return ctx.json({
+        "id": rid,
+        "name": rname,
+        "email": remail
+    });
+}
+
+@app.post("/users")
+async fun createUser(ctx | coolweb.Context) | coolweb.Response {
+    var body | dict<any> = ctx.jsonBody();
+    var name | string = body["name"];
+    var email | string = body["email"];
+
+    var result | sql.ExecResult = await db.exec(
+        "INSERT INTO users(name, email) VALUES($1, $2)",
+        [name, email]
+    );
+
+    return ctx.json({
+        "created": true,
+        "rowsAffected": result.rowsAffected
+    }, 201);
+}
+
+@app.delete("/users/:id")
+async fun deleteUser(ctx | coolweb.Context) | coolweb.Response {
+    var id | string = ctx.params["id"];
+
+    var tx | sql.Transaction = await db.begin();
+    try {
+        await tx.exec("DELETE FROM user_roles WHERE user_id = $1", [id]);
+        await tx.exec("DELETE FROM users WHERE id = $1", [id]);
+        await tx.commit();
+        return ctx.json({ "deleted": true });
+    } catch (e | error) {
+        await tx.rollback();
+        return ctx.json({ "error": errorMessage(e) }, 500);
+    }
+}
+
+async fun main() | void {
+    app.use(coolweb.loggerMiddleware);
+    print("Starting server with database pool...");
+    await app.run(8080);
+}

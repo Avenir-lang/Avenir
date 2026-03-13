@@ -1,0 +1,65 @@
+pckg main;
+
+import std.sql;
+import std.sql.sqlite;
+
+async fun main() | void {
+    sqlite.register();
+
+    var db | sql.DB = sql.open("sqlite://:memory:");
+
+    await db.exec(
+        "CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, age INTEGER NOT NULL)",
+        []
+    );
+
+    await db.exec("INSERT INTO users(name, age) VALUES(?, ?)", ["Alice", 30]);
+    await db.exec("INSERT INTO users(name, age) VALUES(?, ?)", ["Bob", 25]);
+    await db.exec("INSERT INTO users(name, age) VALUES(?, ?)", ["Charlie", 35]);
+
+    print("--- All users ---");
+    var rows | sql.Rows = await db.query("SELECT id, name, age FROM users ORDER BY id", []);
+
+    while (rows.next()) {
+        var id | int = rows.getInt("id");
+        var name | string = rows.getString("name");
+        var age | int = rows.getInt("age");
+        print("${id}: ${name} (age ${age})");
+    }
+    rows.close();
+
+    print("--- Single user lookup ---");
+    var lookupRows | sql.Rows = await db.query(
+        "SELECT name, age FROM users WHERE age > ? ORDER BY age LIMIT 1",
+        [28]
+    );
+    if (lookupRows.next()) {
+        print("Found: " + lookupRows.getString("name"));
+    }
+    lookupRows.close();
+
+    print("--- Transaction test ---");
+    var tx | sql.Transaction = await db.begin();
+    try {
+        await tx.exec("INSERT INTO users(name, age) VALUES(?, ?)", ["Dave", 40]);
+        await tx.exec("INSERT INTO users(name, age) VALUES(?, ?)", ["Eve", 22]);
+        await tx.commit();
+        print("Transaction committed");
+    } catch (e | error) {
+        await tx.rollback();
+        print("Transaction rolled back: " + errorMessage(e));
+    }
+
+    var rows2 | sql.Rows = await db.query("SELECT id, name, age FROM users ORDER BY id", []);
+    print("--- After transaction ---");
+    while (rows2.next()) {
+        var id2 | int = rows2.getInt("id");
+        var name2 | string = rows2.getString("name");
+        var age2 | int = rows2.getInt("age");
+        print("${id2}: ${name2} (age ${age2})");
+    }
+    rows2.close();
+
+    await db.close();
+    print("Done!");
+}

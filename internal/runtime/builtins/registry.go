@@ -13,6 +13,7 @@ type Env interface {
 	Net() Net
 	FS() FS
 	HTTP() HTTP
+	SQL() SQL
 	ExecRoot() string
 	// CallClosure calls a closure with the given arguments.
 	// This enables builtins to call first-class functions (e.g., in map/filter/reduce).
@@ -54,6 +55,32 @@ type HTTP interface {
 	Listen(host string, port int) ([]byte, error)
 	Accept(serverHandle []byte) (*HTTPRequestData, error)
 	Respond(reqHandle []byte, status int, headers map[string]string, body []byte) error
+}
+
+// SQL is the minimal interface needed by builtin SQL functions.
+type SQL interface {
+	PgConnect(host, port, user, password, database string) ([]byte, error)
+	PgClose(handle []byte) error
+	PgQuery(handle []byte, query string, params []interface{}) (*SQLResultData, error)
+	PgExec(handle []byte, query string, params []interface{}) (*SQLResultData, error)
+	PgBegin(handle []byte) ([]byte, error)
+	PgCommit(txHandle []byte) error
+	PgRollback(txHandle []byte) error
+	SqliteConnect(path string) ([]byte, error)
+	SqliteClose(handle []byte) error
+	SqliteQuery(handle []byte, query string, params []interface{}) (*SQLResultData, error)
+	SqliteExec(handle []byte, query string, params []interface{}) (*SQLResultData, error)
+	SqliteBegin(handle []byte) ([]byte, error)
+	SqliteCommit(txHandle []byte) error
+	SqliteRollback(txHandle []byte) error
+}
+
+// SQLResultData represents the result of an SQL query or exec operation.
+type SQLResultData struct {
+	Columns      []string
+	Rows         []map[string]interface{}
+	RowsAffected int64
+	LastInsertID int64
 }
 
 // HTTPRequestData represents a parsed HTTP request returned by the runtime service.
@@ -192,6 +219,24 @@ const (
 	AsyncHTTPRespond
 	AsyncFSReadAll
 	AsyncWithTimeout
+
+	// Async SQL builtins
+	AsyncSQLPgConnect
+	AsyncSQLPgClose
+	AsyncSQLPgQuery
+	AsyncSQLPgExec
+	AsyncSQLPgBegin
+	AsyncSQLPgCommit
+	AsyncSQLPgRollback
+
+	// Async SQLite builtins
+	AsyncSQLSqliteConnect
+	AsyncSQLSqliteClose
+	AsyncSQLSqliteQuery
+	AsyncSQLSqliteExec
+	AsyncSQLSqliteBegin
+	AsyncSQLSqliteCommit
+	AsyncSQLSqliteRollback
 )
 
 // TypeKind represents a type in the builtin type system.

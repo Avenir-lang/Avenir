@@ -1,0 +1,79 @@
+pckg std.sql;
+
+struct sql {}
+
+pub struct ExecResult {
+    pub rowsAffected | int
+    pub lastInsertId | int
+}
+
+pub mut struct DB {
+    pub mut _pool | Pool
+}
+
+pub async fun connect(url | string, maxConnections | int = 1) | DB {
+    var drv | Driver = resolveDriverFromUrl(url);
+    var p | Pool = newPool(url, drv, maxConnections);
+    return DB{_pool = p};
+}
+
+pub fun open(url | string, maxConnections | int = 10) | DB {
+    var drv | Driver = resolveDriverFromUrl(url);
+    var p | Pool = newPool(url, drv, maxConnections);
+    return DB{_pool = p};
+}
+
+pub async fun (db | DB).query(sqlText | string, params | list<any> = []) | Rows {
+    var conn | Connection = await db._pool.acquire();
+    try {
+        var rs | Rows = await conn.query(sqlText, params);
+        db._pool.release(conn);
+        return rs;
+    } catch (e | error) {
+        db._pool.release(conn);
+        throw e;
+    }
+}
+
+pub async fun (db | DB).queryRow(sqlText | string, params | list<any> = []) | Row? {
+    var conn | Connection = await db._pool.acquire();
+    try {
+        var result | Row? = await conn.queryRow(sqlText, params);
+        db._pool.release(conn);
+        return result;
+    } catch (e | error) {
+        db._pool.release(conn);
+        throw e;
+    }
+}
+
+pub async fun (db | DB).exec(sqlText | string, params | list<any> = []) | ExecResult {
+    var conn | Connection = await db._pool.acquire();
+    try {
+        var result | ExecResult = await conn.exec(sqlText, params);
+        db._pool.release(conn);
+        return result;
+    } catch (e | error) {
+        db._pool.release(conn);
+        throw e;
+    }
+}
+
+pub async fun (db | DB).begin() | Transaction {
+    var conn | Connection = await db._pool.acquire();
+    try {
+        var txHandle | any = await conn.begin();
+        return newTransaction(conn, db._pool, txHandle);
+    } catch (e | error) {
+        db._pool.release(conn);
+        throw e;
+    }
+}
+
+pub async fun (db | DB).close() | void {
+    await db._pool.close();
+}
+
+pub fun (db | DB).stats() | dict<any> {
+    return db._pool.stats();
+}

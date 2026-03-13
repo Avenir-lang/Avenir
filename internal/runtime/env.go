@@ -26,6 +26,7 @@ type Env struct {
 	netService      *netService
 	fsService       *fsService
 	httpService     *httpService
+	sqlService      *sqlService
 	execRoot        string
 }
 
@@ -47,6 +48,11 @@ func (e *Env) FS() builtins.FS {
 // HTTP returns the HTTP service. Implements builtins.Env interface.
 func (e *Env) HTTP() builtins.HTTP {
 	return e.httpService
+}
+
+// SQL returns the SQL service. Implements builtins.Env interface.
+func (e *Env) SQL() builtins.SQL {
+	return e.sqlService
 }
 
 // ExecRoot returns the execution root directory for relative file paths.
@@ -148,10 +154,11 @@ func (s *stdIO) ReadLine() (string, error) {
 // (printing to stdout, real filesystem, etc.).
 func DefaultEnv() *Env {
 	return &Env{
-		ioService:  newStdIO(),
-		netService: newNetService(),
-		fsService:  newFSService(),
+		ioService:   newStdIO(),
+		netService:  newNetService(),
+		fsService:   newFSService(),
 		httpService: newHTTPService(),
+		sqlService:  newSQLService(),
 	}
 }
 
@@ -159,9 +166,10 @@ func DefaultEnv() *Env {
 // This is useful for tests that need to provide a custom IO implementation.
 func NewEnv(io builtinsio.IO) *Env {
 	return &Env{
-		ioService:  io,
-		netService: newNetService(),
-		fsService:  newFSService(),
+		ioService:   io,
+		netService:  newNetService(),
+		fsService:   newFSService(),
 		httpService: newHTTPService(),
+		sqlService:  newSQLService(),
 	}
 }

@@ -1,0 +1,72 @@
+pckg std.sql;
+
+struct utils {}
+
+pub fun parseConnectionUrl(url | string) | dict<string> {
+    var result | dict<string> = {};
+
+    if (!url.contains("://")) {
+        throw connectionError("invalid connection URL: missing ://");
+    }
+
+    var schemeParts | list<string> = url.split("://");
+    var scheme | string = schemeParts.get(0);
+    result.set("scheme", scheme);
+
+    var rest | string = schemeParts.get(1);
+
+    var hostPart | string = rest;
+    var dbName | string = "";
+    if (rest.contains("/")) {
+        var pathParts | list<string> = rest.split("/");
+        hostPart = pathParts.get(0);
+        if (pathParts.length() > 1) {
+            dbName = pathParts.get(1);
+        }
+    }
+
+    if (dbName.contains("?")) {
+        var queryParts | list<string> = dbName.split("?");
+        dbName = queryParts.get(0);
+        result.set("params", queryParts.get(1));
+    }
+    result.set("database", dbName);
+
+    var userPart | string = "";
+    var serverPart | string = hostPart;
+    if (hostPart.contains("@")) {
+        var atParts | list<string> = hostPart.split("@");
+        userPart = atParts.get(0);
+        serverPart = atParts.get(1);
+    }
+
+    if (userPart != "") {
+        if (userPart.contains(":")) {
+            var credParts | list<string> = userPart.split(":");
+            result.set("user", credParts.get(0));
+            result.set("password", credParts.get(1));
+        } else {
+            result.set("user", userPart);
+            result.set("password", "");
+        }
+    } else {
+        result.set("user", "");
+        result.set("password", "");
+    }
+
+    if (serverPart.contains(":")) {
+        var portParts | list<string> = serverPart.split(":");
+        result.set("host", portParts.get(0));
+        result.set("port", portParts.get(1));
+    } else {
+        result.set("host", serverPart);
+        result.set("port", "5432");
+    }
+
+    return result;
+}
+
+pub fun escapeIdentifier(name | string) | string {
+    var escaped | string = name.replace("\"", "\"\"");
+    return "\"" + escaped + "\"";
+}

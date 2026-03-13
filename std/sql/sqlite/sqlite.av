@@ -1,0 +1,80 @@
+pckg std.sql.sqlite;
+
+import std.sql;
+
+struct sqlite {}
+
+fun _autoRegister() | bool {
+    register();
+    return true;
+}
+
+var _registered | bool = _autoRegister();
+
+pub fun register() | void {
+    var drv | sql.Driver = sql.newDriver(
+        "sqlite",
+        asyncConnect,
+        asyncClose,
+        asyncQuery,
+        asyncExec,
+        asyncBegin,
+        asyncCommit,
+        asyncRollback,
+        parseResult
+    );
+    sql.registerDriver("sqlite", drv);
+}
+
+async fun asyncConnect(url | string) | any {
+    var path | string = parseSqlitePath(url);
+    return await __builtin_async_sql_sqlite_connect(path);
+}
+
+async fun asyncClose(handle | any) | void {
+    await __builtin_async_sql_sqlite_close(handle);
+}
+
+async fun asyncQuery(handle | any, sqlText | string, params | list<any>) | any {
+    return await __builtin_async_sql_sqlite_query(handle, sqlText, params);
+}
+
+async fun asyncExec(handle | any, sqlText | string, params | list<any>) | any {
+    return await __builtin_async_sql_sqlite_exec(handle, sqlText, params);
+}
+
+async fun asyncBegin(handle | any) | any {
+    return await __builtin_async_sql_sqlite_begin(handle);
+}
+
+async fun asyncCommit(txHandle | any) | void {
+    await __builtin_async_sql_sqlite_commit(txHandle);
+}
+
+async fun asyncRollback(txHandle | any) | void {
+    await __builtin_async_sql_sqlite_rollback(txHandle);
+}
+
+fun parseSqlitePath(url | string) | string {
+    if (!url.contains("://")) {
+        return url;
+    }
+    var parts | list<string> = url.split("://");
+    var path | string = parts.get(1);
+    if (path == "") {
+        return ":memory:";
+    }
+    return path;
+}
+
+fun parseResult(raw | any) | dict<any> {
+    var result | dict<any> = raw;
+
+    if (!result.has("columns")) {
+        result.set("columns", []);
+    }
+    if (!result.has("rows")) {
+        result.set("rows", []);
+    }
+    return result;
+}

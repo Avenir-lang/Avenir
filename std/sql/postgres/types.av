@@ -1,0 +1,58 @@
+pckg std.sql.postgres;
+
+import std.sql;
+
+struct types {}
+
+var OID_BOOL | int = 16;
+var OID_BYTEA | int = 17;
+var OID_INT8 | int = 20;
+var OID_INT2 | int = 21;
+var OID_INT4 | int = 23;
+var OID_TEXT | int = 25;
+var OID_FLOAT4 | int = 700;
+var OID_FLOAT8 | int = 701;
+var OID_VARCHAR | int = 1043;
+var OID_DATE | int = 1082;
+var OID_TIMESTAMP | int = 1114;
+var OID_TIMESTAMPTZ | int = 1184;
+var OID_NUMERIC | int = 1700;
+var OID_JSON | int = 114;
+var OID_JSONB | int = 3802;
+var OID_UUID | int = 2950;
+
+pub fun oidToTypeName(oid | int) | string {
+    if (oid == OID_BOOL) { return "bool"; }
+    if (oid == OID_BYTEA) { return "bytes"; }
+    if (oid == OID_INT2 || oid == OID_INT4 || oid == OID_INT8) { return "int"; }
+    if (oid == OID_TEXT || oid == OID_VARCHAR) { return "string"; }
+    if (oid == OID_FLOAT4 || oid == OID_FLOAT8 || oid == OID_NUMERIC) { return "float"; }
+    if (oid == OID_DATE || oid == OID_TIMESTAMP || oid == OID_TIMESTAMPTZ) { return "string"; }
+    if (oid == OID_JSON || oid == OID_JSONB) { return "string"; }
+    if (oid == OID_UUID) { return "string"; }
+    return "any";
+}
+
+pub fun isIntegerOid(oid | int) | bool {
+    return oid == OID_INT2 || oid == OID_INT4 || oid == OID_INT8;
+}
+
+pub fun isFloatOid(oid | int) | bool {
+    return oid == OID_FLOAT4 || oid == OID_FLOAT8 || oid == OID_NUMERIC;
+}
+
+pub fun isStringOid(oid | int) | bool {
+    return oid == OID_TEXT || oid == OID_VARCHAR || oid == OID_UUID;
+}
+
+pub fun isBoolOid(oid | int) | bool {
+    return oid == OID_BOOL;
+}
+
+pub fun isTemporalOid(oid | int) | bool {
+    return oid == OID_DATE || oid == OID_TIMESTAMP || oid == OID_TIMESTAMPTZ;
+}
+
+pub fun isJsonOid(oid | int) | bool {
+    return oid == OID_JSON || oid == OID_JSONB;
+}

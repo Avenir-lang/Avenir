@@ -16,6 +16,7 @@ import (
 	_ "avenir/internal/runtime/builtins/json"
 	_ "avenir/internal/runtime/builtins/meta"
 	_ "avenir/internal/runtime/builtins/net"
+	_ "avenir/internal/runtime/builtins/sql"
 	_ "avenir/internal/runtime/builtins/strings"
 	_ "avenir/internal/runtime/builtins/time"
 	"avenir/internal/value"

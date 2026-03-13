@@ -1,0 +1,77 @@
+pckg std.sql;
+
+struct connection {}
+
+pub mut struct Connection {
+    pub _handle | any
+    pub _driver | Driver
+    pub mut _closed | bool
+    pub _url | string
+}
+
+pub fun newConnection(handle | any, drv | Driver, url | string) | Connection {
+    return Connection{
+        _handle = handle,
+        _driver = drv,
+        _closed = false,
+        _url = url
+    };
+}
+
+pub async fun (c | Connection).query(sqlText | string, params | list<any> = []) | Rows {
+    if (c._closed) {
+        throw closedError("connection");
+    }
+    var rawResult | any = await c._driver.asyncQueryFn(c._handle, sqlText, params);
+    var parsed | dict<any> = c._driver.parseResultFn(rawResult);
+    var columns | list<string> = parsed["columns"];
+    var data | list<any> = parsed["rows"];
+    return newRows(columns, data);
+}
+
+pub async fun (c | Connection).queryRow(sqlText | string, params | list<any> = []) | Row? {
+    var rs | Rows = await c.query(sqlText, params);
+    if (rs.next()) {
+        var result | Row = rs.currentRow();
+        rs.close();
+        return some(result);
+    }
+    rs.close();
+    return none;
+}
+
+pub async fun (c | Connection).exec(sqlText | string, params | list<any> = []) | ExecResult {
+    if (c._closed) {
+        throw closedError("connection");
+    }
+    var rawResult | any = await c._driver.asyncExecFn(c._handle, sqlText, params);
+    var parsed | dict<any> = c._driver.parseResultFn(rawResult);
+    var affected | int = 0;
+    if (parsed.has("rowsAffected")) {
+        affected = parsed["rowsAffected"];
+    }
+    var lastId | int = 0;
+    if (parsed.has("lastInsertId")) {
+        lastId = parsed["lastInsertId"];
+    }
+    return ExecResult{rowsAffected = affected, lastInsertId = lastId};
+}
+
+pub async fun (c | Connection).begin() | any {
+    if (c._closed) {
+        throw closedError("connection");
+    }
+    return await c._driver.asyncBeginFn(c._handle);
+}
+
+pub fun (c | Connection).isClosed() | bool {
+    return c._closed;
+}
+
+pub async fun (c | Connection).close() | void {
+    if (c._closed) {
+        return;
+    }
+    c._closed = true;
+    await c._driver.asyncCloseFn(c._handle);
+}

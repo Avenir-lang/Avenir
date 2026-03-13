@@ -1,0 +1,77 @@
+pckg std.sql.postgres;
+
+struct protocol {}
+
+var PG_PROTOCOL_VERSION | int = 196608;
+
+var MSG_AUTH | string = "R";
+var MSG_PARAMETER_STATUS | string = "S";
+var MSG_BACKEND_KEY | string = "K";
+var MSG_READY_FOR_QUERY | string = "Z";
+var MSG_ROW_DESCRIPTION | string = "T";
+var MSG_DATA_ROW | string = "D";
+var MSG_COMMAND_COMPLETE | string = "C";
+var MSG_ERROR_RESPONSE | string = "E";
+var MSG_NOTICE_RESPONSE | string = "N";
+var MSG_PARSE_COMPLETE | string = "1";
+var MSG_BIND_COMPLETE | string = "2";
+var MSG_CLOSE_COMPLETE | string = "3";
+var MSG_NO_DATA | string = "n";
+
+var AUTH_OK | int = 0;
+var AUTH_CLEARTEXT | int = 3;
+var AUTH_MD5 | int = 5;
+var AUTH_SASL | int = 10;
+
+var TX_IDLE | string = "I";
+var TX_IN_TRANSACTION | string = "T";
+var TX_ERROR | string = "E";
+
+pub fun formatStartupMessage(user | string, database | string) | dict<any> {
+    return {
+        "protocol": PG_PROTOCOL_VERSION,
+        "user": user,
+        "database": database
+    };
+}
+
+pub fun formatSimpleQuery(sqlText | string) | dict<any> {
+    return {
+        "type": "Q",
+        "query": sqlText
+    };
+}
+
+pub fun formatParse(stmtName | string, sqlText | string, paramCount | int) | dict<any> {
+    return {
+        "type": "P",
+        "name": stmtName,
+        "query": sqlText,
+        "paramCount": paramCount
+    };
+}
+
+pub fun formatBind(stmtName | string, portalName | string, params | list<any>) | dict<any> {
+    return {
+        "type": "B",
+        "statement": stmtName,
+        "portal": portalName,
+        "params": params
+    };
+}
+
+pub fun formatExecute(portalName | string, maxRows | int = 0) | dict<any> {
+    return {
+        "type": "E",
+        "portal": portalName,
+        "maxRows": maxRows
+    };
+}
+
+pub fun formatSync() | dict<any> {
+    return { "type": "S" };
+}
+
+pub fun formatTerminate() | dict<any> {
+    return { "type": "X" };
+}

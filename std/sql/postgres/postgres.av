@@ -1,0 +1,73 @@
+pckg std.sql.postgres;
+
+import std.sql;
+
+struct postgres {}
+
+fun _autoRegister() | bool {
+    register();
+    return true;
+}
+
+var _registered | bool = _autoRegister();
+
+pub fun register() | void {
+    var drv | sql.Driver = sql.newDriver(
+        "postgres",
+        asyncConnect,
+        asyncClose,
+        asyncQuery,
+        asyncExec,
+        asyncBegin,
+        asyncCommit,
+        asyncRollback,
+        parseResult
+    );
+    sql.registerDriver("postgres", drv);
+}
+
+async fun asyncConnect(url | string) | any {
+    var config | dict<string> = sql.parseConnectionUrl(url);
+    var host | string = config["host"];
+    var port | string = config["port"];
+    var user | string = config["user"];
+    var password | string = config["password"];
+    var database | string = config["database"];
+    return await __builtin_async_sql_pg_connect(host, port, user, password, database);
+}
+
+async fun asyncClose(handle | any) | void {
+    await __builtin_async_sql_pg_close(handle);
+}
+
+async fun asyncQuery(handle | any, sqlText | string, params | list<any>) | any {
+    return await __builtin_async_sql_pg_query(handle, sqlText, params);
+}
+
+async fun asyncExec(handle | any, sqlText | string, params | list<any>) | any {
+    return await __builtin_async_sql_pg_exec(handle, sqlText, params);
+}
+
+async fun asyncBegin(handle | any) | any {
+    return await __builtin_async_sql_pg_begin(handle);
+}
+
+async fun asyncCommit(txHandle | any) | void {
+    await __builtin_async_sql_pg_commit(txHandle);
+}
+
+async fun asyncRollback(txHandle | any) | void {
+    await __builtin_async_sql_pg_rollback(txHandle);
+}
+
+fun parseResult(raw | any) | dict<any> {
+    var result | dict<any> = raw;
+
+    if (!result.has("columns")) {
+        result.set("columns", []);
+    }
+    if (!result.has("rows")) {
+        result.set("rows", []);
+    }
+    return result;
+}

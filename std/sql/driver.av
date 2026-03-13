@@ -1,0 +1,78 @@
+pckg std.sql;
+
+struct driver {}
+
+pub struct Driver {
+    pub name | string
+    pub asyncConnectFn | fun(string) | Future<any>
+    pub asyncCloseFn | fun(any) | Future<void>
+    pub asyncQueryFn | fun(any, string, list<any>) | Future<any>
+    pub asyncExecFn | fun(any, string, list<any>) | Future<any>
+    pub asyncBeginFn | fun(any) | Future<any>
+    pub asyncCommitFn | fun(any) | Future<void>
+    pub asyncRollbackFn | fun(any) | Future<void>
+    pub parseResultFn | fun(any) | dict<any>
+}
+
+pub fun newDriver(
+    name | string,
+    connectFn | fun(string) | Future<any>,
+    closeFn | fun(any) | Future<void>,
+    queryFn | fun(any, string, list<any>) | Future<any>,
+    execFn | fun(any, string, list<any>) | Future<any>,
+    beginFn | fun(any) | Future<any>,
+    commitFn | fun(any) | Future<void>,
+    rollbackFn | fun(any) | Future<void>,
+    parseFn | fun(any) | dict<any>
+) | Driver {
+    return Driver{
+        name = name,
+        asyncConnectFn = connectFn,
+        asyncCloseFn = closeFn,
+        asyncQueryFn = queryFn,
+        asyncExecFn = execFn,
+        asyncBeginFn = beginFn,
+        asyncCommitFn = commitFn,
+        asyncRollbackFn = rollbackFn,
+        parseResultFn = parseFn
+    };
+}
+
+var drivers | dict<any> = {};
+
+pub fun registerDriver(name | string, drv | Driver) | void {
+    if (drivers.has(name)) {
+        return;
+    }
+    drivers.set(name, drv);
+}
+
+pub fun getDriver(name | string) | Driver {
+    if (!drivers.has(name)) {
+        throw driverError("unknown driver: " + name);
+    }
+    var drv | Driver = drivers[name];
+    return drv;
+}
+
+pub fun resolveDriverFromUrl(url | string) | Driver {
+    var scheme | string = extractScheme(url);
+    if (scheme == "postgres" || scheme == "postgresql") {
+        return getDriver("postgres");
+    }
+    if (scheme == "sqlite") {
+        return getDriver("sqlite");
+    }
+    if (scheme == "mysql") {
+        return getDriver("mysql");
+    }
+    throw driverError("unsupported scheme: " + scheme);
+}
+
+fun extractScheme(url | string) | string {
+    if (!url.contains("://")) {
+        throw driverError("invalid connection URL: missing ://");
+    }
+    var parts | list<string> = url.split("://");
+    return parts.get(0);
+}

@@ -1,0 +1,79 @@
+pckg std.sql;
+
+struct transaction {}
+
+pub mut struct Transaction {
+    pub _conn | Connection
+    pub _pool | Pool
+    pub mut _txHandle | any
+    pub mut _done | bool
+}
+
+pub fun newTransaction(conn | Connection, pool | Pool, txHandle | any) | Transaction {
+    return Transaction{
+        _conn = conn,
+        _pool = pool,
+        _txHandle = txHandle,
+        _done = false
+    };
+}
+
+pub async fun (tx | Transaction).query(sqlText | string, params | list<any> = []) | Rows {
+    if (tx._done) {
+        throw transactionError("transaction already completed");
+    }
+    var rawResult | any = await tx._conn._driver.asyncQueryFn(tx._txHandle, sqlText, params);
+    var parsed | dict<any> = tx._conn._driver.parseResultFn(rawResult);
+    var columns | list<string> = parsed["columns"];
+    var data | list<any> = parsed["rows"];
+    return newRows(columns, data);
+}
+
+pub async fun (tx | Transaction).queryRow(sqlText | string, params | list<any> = []) | Row? {
+    if (tx._done) {
+        throw transactionError("transaction already completed");
+    }
+    var rs | Rows = await tx.query(sqlText, params);
+    if (rs.next()) {
+        var result | Row = rs.currentRow();
+        rs.close();
+        return some(result);
+    }
+    rs.close();
+    return none;
+}
+
+pub async fun (tx | Transaction).exec(sqlText | string, params | list<any> = []) | ExecResult {
+    if (tx._done) {
+        throw transactionError("transaction already completed");
+    }
+    var rawResult | any = await tx._conn._driver.asyncExecFn(tx._txHandle, sqlText, params);
+    var parsed | dict<any> = tx._conn._driver.parseResultFn(rawResult);
+    var affected | int = 0;
+    if (parsed.has("rowsAffected")) {
+        affected = parsed["rowsAffected"];
+    }
+    var lastId | int = 0;
+    if (parsed.has("lastInsertId")) {
+        lastId = parsed["lastInsertId"];
+    }
+    return ExecResult{rowsAffected = affected, lastInsertId = lastId};
+}
+
+pub async fun (tx | Transaction).commit() | void {
+    if (tx._done) {
+        throw transactionError("transaction already completed");
+    }
+    tx._done = true;
+    await tx._conn._driver.asyncCommitFn(tx._txHandle);
+    tx._pool.release(tx._conn);
+}
+
+pub async fun (tx | Transaction).rollback() | void {
+    if (tx._done) {
+        throw transactionError("transaction already completed");
+    }
+    tx._done = true;
+    await tx._conn._driver.asyncRollbackFn(tx._txHandle);
+    tx._pool.release(tx._conn);
+}

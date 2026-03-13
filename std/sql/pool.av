@@ -1,0 +1,78 @@
+pckg std.sql;
+
+struct pool {}
+
+pub mut struct Pool {
+    pub _url | string
+    pub _driver | Driver
+    pub mut maxConnections | int
+    pub mut _idle | list<any>
+    pub mut _busy | int
+    pub mut _closed | bool
+}
+
+pub fun newPool(url | string, drv | Driver, maxConnections | int = 10) | Pool {
+    return Pool{
+        _url = url,
+        _driver = drv,
+        maxConnections = maxConnections,
+        _idle = [],
+        _busy = 0,
+        _closed = false
+    };
+}
+
+pub async fun (p | Pool).acquire() | Connection {
+    if (p._closed) {
+        throw closedError("pool");
+    }
+
+    if (p._idle.length() > 0) {
+        var lastIdx | int = p._idle.length() - 1;
+        var conn | Connection = p._idle.get(lastIdx);
+        p._idle = p._idle.slice(0, lastIdx);
+        if (!conn.isClosed()) {
+            p._busy = p._busy + 1;
+            return conn;
+        }
+    }
+
+    var total | int = p._busy + p._idle.length();
+    if (total >= p.maxConnections) {
+        throw poolExhaustedError();
+    }
+
+    var handle | any = await p._driver.asyncConnectFn(p._url);
+    var conn | Connection = newConnection(handle, p._driver, p._url);
+    p._busy = p._busy + 1;
+    return conn;
+}
+
+pub fun (p | Pool).release(conn | Connection) | void {
+    if (p._closed || conn.isClosed()) {
+        p._busy = p._busy - 1;
+        return;
+    }
+    p._busy = p._busy - 1;
+    p._idle = p._idle.append(conn);
+}
+
+pub async fun (p | Pool).close() | void {
+    p._closed = true;
+    var i | int = 0;
+    while (i < p._idle.length()) {
+        var conn | Connection = p._idle.get(i);
+        await conn.close();
+        i = i + 1;
+    }
+    p._idle = [];
+}
+
+pub fun (p | Pool).stats() | dict<any> {
+    return {
+        "idle": p._idle.length(),
+        "busy": p._busy,
+        "maxConnections": p.maxConnections,
+        "closed": p._closed
+    };
+}
