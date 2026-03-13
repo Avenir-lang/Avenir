@@ -3,7 +3,7 @@ pckg main;
 import std.time;
 
 async fun delayed_greeting(name | string, delay_ms | int) | string {
-    await std.time.asyncSleep(delay_ms * 1000000);
+    await time.asyncSleep(time.fromMillis(delay_ms));
     return "Hello, " + name + "!";
 }
 
