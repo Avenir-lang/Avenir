@@ -27,6 +27,7 @@ type Env struct {
 	fsService       *fsService
 	httpService     *httpService
 	sqlService      *sqlService
+	tlsService      *tlsService
 	execRoot        string
 }
 
@@ -53,6 +54,11 @@ func (e *Env) HTTP() builtins.HTTP {
 // SQL returns the SQL service. Implements builtins.Env interface.
 func (e *Env) SQL() builtins.SQL {
 	return e.sqlService
+}
+
+// TLS returns the TLS service. Implements builtins.Env interface.
+func (e *Env) TLS() builtins.TLS {
+	return e.tlsService
 }
 
 // ExecRoot returns the execution root directory for relative file paths.
@@ -159,6 +165,7 @@ func DefaultEnv() *Env {
 		fsService:   newFSService(),
 		httpService: newHTTPService(),
 		sqlService:  newSQLService(),
+		tlsService:  newTLSService(),
 	}
 }
 
@@ -171,5 +178,6 @@ func NewEnv(io builtinsio.IO) *Env {
 		fsService:   newFSService(),
 		httpService: newHTTPService(),
 		sqlService:  newSQLService(),
+		tlsService:  newTLSService(),
 	}
 }

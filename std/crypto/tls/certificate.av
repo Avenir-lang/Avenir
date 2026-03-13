@@ -1,0 +1,41 @@
+pckg std.crypto.tls;
+
+struct certificate {}
+
+pub struct Certificate {
+    handle | any
+}
+
+pub struct PrivateKey {
+    handle | any
+}
+
+pub fun (c | Certificate).subject() | string {
+    var info | dict<any> = __builtin_tls_cert_info(c.handle);
+    return info["subject"];
+}
+
+pub fun (c | Certificate).issuer() | string {
+    var info | dict<any> = __builtin_tls_cert_info(c.handle);
+    return info["issuer"];
+}
+
+pub fun (c | Certificate).notBefore() | int {
+    var info | dict<any> = __builtin_tls_cert_info(c.handle);
+    return info["notBefore"];
+}
+
+pub fun (c | Certificate).notAfter() | int {
+    var info | dict<any> = __builtin_tls_cert_info(c.handle);
+    return info["notAfter"];
+}
+
+pub fun (c | Certificate).dnsNames() | list<string> {
+    var info | dict<any> = __builtin_tls_cert_info(c.handle);
+    return info["dnsNames"];
+}
+
+pub fun (c | Certificate).isCA() | bool {
+    var info | dict<any> = __builtin_tls_cert_info(c.handle);
+    return info["isCA"];
+}

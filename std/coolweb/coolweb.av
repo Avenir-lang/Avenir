@@ -91,6 +91,33 @@ pub async fun (app | App).run(port | int) | void {
     }
 }
 
+pub async fun (app | App).runTLS(port | int, certFile | string, keyFile | string) | void {
+    var server | http.HttpServer = http.listenTLS("0.0.0.0", port, certFile, keyFile);
+    print("CoolWeb listening on :${port} (HTTPS)");
+    while (true) {
+        var raw | dict<any> = await server.asyncAccept();
+        var _ | Future<void> = dispatchRequest(app, raw);
+    }
+}
+
+pub async fun (app | App).runTLSConfig(port | int, cfg | dict<any>) | void {
+    var server | http.HttpServer = http.listenTLSConfig("0.0.0.0", port, cfg);
+    print("CoolWeb listening on :${port} (HTTPS)");
+    while (true) {
+        var raw | dict<any> = await server.asyncAccept();
+        var _ | Future<void> = dispatchRequest(app, raw);
+    }
+}
+
+pub async fun (app | App).runAutoTLS(port | int, domain | string, email | string) | void {
+    var server | http.HttpServer = http.listenAutoTLS("0.0.0.0", port, domain, email);
+    print("CoolWeb listening on :${port} (HTTPS/AutoTLS for ${domain})");
+    while (true) {
+        var raw | dict<any> = await server.asyncAccept();
+        var _ | Future<void> = dispatchRequest(app, raw);
+    }
+}
+
 async fun dispatchRequest(app | App, raw | dict<any>) | void {
     var startNs | int = __builtin_time_now();
     var fullPath | string = raw["path"];

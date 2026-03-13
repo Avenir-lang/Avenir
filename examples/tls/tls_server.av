@@ -1,0 +1,19 @@
+pckg main;
+
+import std.crypto.tls;
+
+async fun main() | void {
+    var ln | tls.Listener = tls.listen("0.0.0.0", 8443, "cert.pem", "key.pem");
+    print("TLS server listening on :8443");
+
+    while (true) {
+        var conn | tls.Connection = await ln.asyncAccept();
+        print("New TLS connection (${conn.tlsVersion()})");
+
+        var data | bytes = await conn.asyncRead(4096);
+        print("Received: ${data.toString()}");
+
+        await conn.asyncWriteString("HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello");
+        await conn.asyncClose();
+    }
+}

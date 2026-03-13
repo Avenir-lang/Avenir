@@ -6325,3 +6325,97 @@ fun main() | void {
 		t.Fatalf("top-level method call did NOT persist struct field change: %q", output[2])
 	}
 }
+
+func TestCompileWorld_TLSModule(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	realStd, err := filepath.Abs("../../std")
+	if err != nil {
+		t.Fatalf("failed to resolve std path: %v", err)
+	}
+	if _, err := os.Stat(realStd); os.IsNotExist(err) {
+		t.Skip("std/ directory not found, skipping TLS module test")
+	}
+	if err := os.Symlink(realStd, filepath.Join(tmpDir, "std")); err != nil {
+		t.Fatalf("failed to symlink std: %v", err)
+	}
+
+	mainFile := filepath.Join(tmpDir, "main.av")
+	mainContent := `pckg main;
+
+import std.crypto.tls;
+
+fun main() | int {
+    var cfg | tls.Config = tls.newConfig("cert.pem", "key.pem");
+    print(cfg.certFile);
+    print(cfg.keyFile);
+    print(cfg.clientAuth);
+    return 0;
+}
+`
+	if err := os.WriteFile(mainFile, []byte(mainContent), 0644); err != nil {
+		t.Fatalf("failed to write main.av: %v", err)
+	}
+
+	world, errs := modules.LoadWorld(mainFile)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("module loading error: %s", e)
+		}
+		t.Fatalf("failed to load world: %d errors", len(errs))
+	}
+
+	typeWorld := &types.World{
+		Modules: make(map[string]*types.ModuleInfo),
+		Entry:   world.Entry,
+	}
+	for modName, modAST := range world.Modules {
+		typeWorld.Modules[modName] = &types.ModuleInfo{
+			Name:  modName,
+			Prog:  modAST.Prog,
+			Scope: nil,
+		}
+	}
+
+	bindings, typeErrs := types.CheckWorldWithBindings(typeWorld)
+	if len(typeErrs) > 0 {
+		for _, e := range typeErrs {
+			t.Logf("type error: %s", e)
+		}
+		t.Fatalf("type checking failed: %d errors", len(typeErrs))
+	}
+
+	entryModInfo := typeWorld.Modules[world.Entry]
+	mod, compileErrs := ir.CompileWorld(typeWorld, entryModInfo, bindings)
+	if len(compileErrs) > 0 {
+		for _, e := range compileErrs {
+			t.Logf("compile error: %s", e)
+		}
+		t.Fatalf("compilation failed: %d errors", len(compileErrs))
+	}
+
+	if mod == nil {
+		t.Fatalf("expected non-nil module")
+	}
+	if mod.MainIndex < 0 {
+		t.Fatalf("expected main function index >= 0")
+	}
+
+	var output []string
+	env := runtime.NewEnv(&testOutputWriter{output: &output})
+	machine := vm.NewVM(mod, env)
+	_, runErr := machine.RunMain()
+	if runErr != nil {
+		t.Fatalf("runtime error: %v", runErr)
+	}
+
+	expected := []string{"cert.pem", "key.pem", "none"}
+	if len(output) != len(expected) {
+		t.Fatalf("expected %d output lines, got %d: %v", len(expected), len(output), output)
+	}
+	for i, exp := range expected {
+		if output[i] != exp {
+			t.Fatalf("output[%d] = %q, expected %q", i, output[i], exp)
+		}
+	}
+}

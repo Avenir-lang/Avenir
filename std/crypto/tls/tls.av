@@ -1,0 +1,62 @@
+pckg std.crypto.tls;
+
+struct tls {}
+
+pub fun newConfig(certFile | string, keyFile | string) | Config {
+    return Config{
+        certFile = certFile,
+        keyFile = keyFile,
+        minVersion = "",
+        maxVersion = "",
+        alpnProtocols = [],
+        clientAuth = "none",
+        clientCAs = [],
+        insecureSkipVerify = false,
+        serverName = ""
+    };
+}
+
+pub fun loadCertificate(certFile | string, keyFile | string) | Certificate {
+    var h | any = __builtin_tls_load_cert(certFile, keyFile);
+    return Certificate{handle = h};
+}
+
+pub fun loadCertificateChain(files | list<string>) | Certificate {
+    var h | any = __builtin_tls_load_cert_chain(files);
+    return Certificate{handle = h};
+}
+
+pub fun loadCertificateFromPEM(certPEM | bytes, keyPEM | bytes) | Certificate {
+    var h | any = __builtin_tls_load_cert_pem(certPEM, keyPEM);
+    return Certificate{handle = h};
+}
+
+pub fun connect(host | string, port | int) | Connection {
+    var h | any = __builtin_tls_connect(host, port, host);
+    return Connection{handle = h};
+}
+
+pub fun connectConfig(host | string, port | int, cfg | Config) | Connection {
+    var h | any = __builtin_tls_connect_config(host, port, cfg.toDict());
+    return Connection{handle = h};
+}
+
+pub fun listen(host | string, port | int, certFile | string, keyFile | string) | Listener {
+    var h | any = __builtin_tls_listen(host, port, certFile, keyFile);
+    return Listener{handle = h};
+}
+
+pub fun listenConfig(host | string, port | int, cfg | Config) | Listener {
+    var h | any = __builtin_tls_listen_config(host, port, cfg.toDict());
+    return Listener{handle = h};
+}
+
+pub async fun asyncConnect(host | string, port | int) | Connection {
+    var h | any = await __builtin_async_tls_connect(host, port, host);
+    return Connection{handle = h};
+}
+
+pub async fun asyncConnectConfig(host | string, port | int, cfg | Config) | Connection {
+    var h | any = await __builtin_async_tls_connect_config(host, port, cfg.toDict());
+    return Connection{handle = h};
+}

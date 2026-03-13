@@ -97,3 +97,32 @@ pub async fun asyncPut(url | string, body | bytes) | HttpResponse {
     };
     return await asyncRequest(req);
 }
+
+pub async fun asyncRequestTLS(req | HttpRequest, cfg | dict<any>) | HttpResponse {
+    var raw | dict<any> = await __builtin_async_https_request(req.method, req.url, req.headers, req.body, cfg);
+    return HttpResponse{
+        status = raw["status"],
+        headers = raw["headers"],
+        body = raw["body"]
+    };
+}
+
+pub async fun asyncGetTLS(url | string, cfg | dict<any>) | HttpResponse {
+    var req | HttpRequest = HttpRequest{
+        method = "GET",
+        url = url,
+        headers = {},
+        body = none
+    };
+    return await asyncRequestTLS(req, cfg);
+}
+
+pub async fun asyncPostTLS(url | string, body | bytes, cfg | dict<any>) | HttpResponse {
+    var req | HttpRequest = HttpRequest{
+        method = "POST",
+        url = url,
+        headers = {},
+        body = some(body)
+    };
+    return await asyncRequestTLS(req, cfg);
+}

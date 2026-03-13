@@ -1,0 +1,51 @@
+pckg std.crypto.tls;
+
+struct connection {}
+
+pub struct Connection {
+    handle | any
+}
+
+pub fun (c | Connection).read(n | int) | bytes {
+    return __builtin_tls_read(c.handle, n);
+}
+
+pub fun (c | Connection).write(data | bytes) | int {
+    return __builtin_tls_write(c.handle, data);
+}
+
+pub fun (c | Connection).writeString(data | string) | int {
+    return __builtin_tls_write(c.handle, fromString(data));
+}
+
+pub fun (c | Connection).close() | void {
+    __builtin_tls_close(c.handle);
+}
+
+pub fun (c | Connection).peerCertificates() | list<dict<string>> {
+    return __builtin_tls_peer_certs(c.handle);
+}
+
+pub fun (c | Connection).negotiatedProtocol() | string {
+    return __builtin_tls_negotiated_protocol(c.handle);
+}
+
+pub fun (c | Connection).tlsVersion() | string {
+    return __builtin_tls_version(c.handle);
+}
+
+pub async fun (c | Connection).asyncRead(n | int) | bytes {
+    return await __builtin_async_tls_read(c.handle, n);
+}
+
+pub async fun (c | Connection).asyncWrite(data | bytes) | int {
+    return await __builtin_async_tls_write(c.handle, data);
+}
+
+pub async fun (c | Connection).asyncWriteString(data | string) | int {
+    return await __builtin_async_tls_write(c.handle, fromString(data));
+}
+
+pub async fun (c | Connection).asyncClose() | void {
+    await __builtin_async_tls_close(c.handle);
+}

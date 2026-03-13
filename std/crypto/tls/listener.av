@@ -1,0 +1,25 @@
+pckg std.crypto.tls;
+
+struct listener {}
+
+pub struct Listener {
+    handle | any
+}
+
+pub fun (l | Listener).accept() | Connection {
+    var h | any = __builtin_tls_accept(l.handle);
+    return Connection{handle = h};
+}
+
+pub fun (l | Listener).close() | void {
+    __builtin_tls_listener_close(l.handle);
+}
+
+pub async fun (l | Listener).asyncAccept() | Connection {
+    var h | any = await __builtin_async_tls_accept(l.handle);
+    return Connection{handle = h};
+}
+
+pub async fun (l | Listener).asyncClose() | void {
+    await __builtin_async_tls_listener_close(l.handle);
+}

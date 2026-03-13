@@ -47,3 +47,18 @@ pub async fun (s | HttpServer).asyncAccept() | dict<any> {
 pub async fun rawRespond(handle | any, status | int, headers | dict<string>, body | bytes) | void {
     await __builtin_async_http_respond(handle, status, headers, body);
 }
+
+pub fun listenTLS(host | string, port | int, certFile | string, keyFile | string) | HttpServer {
+    var h | any = __builtin_https_listen(host, port, certFile, keyFile);
+    return HttpServer{handle = h};
+}
+
+pub fun listenTLSConfig(host | string, port | int, cfg | dict<any>) | HttpServer {
+    var h | any = __builtin_https_listen_config(host, port, cfg);
+    return HttpServer{handle = h};
+}
+
+pub fun listenAutoTLS(host | string, port | int, domain | string, email | string) | HttpServer {
+    var h | any = __builtin_https_listen_auto(host, port, domain, email);
+    return HttpServer{handle = h};
+}

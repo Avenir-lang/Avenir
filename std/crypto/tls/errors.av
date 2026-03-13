@@ -1,0 +1,12 @@
+pckg std.crypto.tls;
+
+struct errors {}
+
+pub struct TLSError {
+    message | string
+    code | string
+}
+
+fun tlsError(msg | string) | error {
+    return error("tls: " + msg);
+}

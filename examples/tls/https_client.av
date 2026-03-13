@@ -1,0 +1,9 @@
+pckg main;
+
+import std.http.client as http;
+
+async fun main() | void {
+    var resp | http.HttpResponse = await http.asyncGet("https://youtube.com");
+    print("Status: ${resp.status}");
+    print("Body: ${resp.text()}");
+}

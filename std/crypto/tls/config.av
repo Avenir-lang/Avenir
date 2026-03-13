@@ -1,0 +1,29 @@
+pckg std.crypto.tls;
+
+struct config {}
+
+pub struct Config {
+    certFile | string
+    keyFile | string
+    minVersion | string
+    maxVersion | string
+    alpnProtocols | list<string>
+    clientAuth | string
+    clientCAs | list<string>
+    insecureSkipVerify | bool
+    serverName | string
+}
+
+pub fun (c | Config).toDict() | dict<any> {
+    return {
+        "certFile": c.certFile,
+        "keyFile": c.keyFile,
+        "minVersion": c.minVersion,
+        "maxVersion": c.maxVersion,
+        "alpnProtocols": c.alpnProtocols,
+        "clientAuth": c.clientAuth,
+        "clientCAs": c.clientCAs,
+        "insecureSkipVerify": c.insecureSkipVerify,
+        "serverName": c.serverName
+    };
+}

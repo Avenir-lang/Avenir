@@ -1,0 +1,14 @@
+pckg main;
+
+import std.crypto.tls;
+
+async fun main() | void {
+    var conn | tls.Connection = await tls.asyncConnect("example.com", 443);
+    print("TLS version: ${conn.tlsVersion()}");
+    print("ALPN protocol: ${conn.negotiatedProtocol()}");
+
+    await conn.asyncWriteString("GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n");
+    var data | bytes = await conn.asyncRead(4096);
+    print(data.toString());
+    await conn.asyncClose();
+}

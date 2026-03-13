@@ -14,6 +14,7 @@ type Env interface {
 	FS() FS
 	HTTP() HTTP
 	SQL() SQL
+	TLS() TLS
 	ExecRoot() string
 	// CallClosure calls a closure with the given arguments.
 	// This enables builtins to call first-class functions (e.g., in map/filter/reduce).
@@ -73,6 +74,41 @@ type SQL interface {
 	SqliteBegin(handle []byte) ([]byte, error)
 	SqliteCommit(txHandle []byte) error
 	SqliteRollback(txHandle []byte) error
+}
+
+// TLSConfigData represents TLS configuration passed from Avenir to the Go runtime.
+type TLSConfigData struct {
+	CertFile           string
+	KeyFile            string
+	MinVersion         string
+	MaxVersion         string
+	ALPNProtocols      []string
+	ClientAuth         string
+	ClientCAs          []string
+	InsecureSkipVerify bool
+	ServerName         string
+}
+
+// TLS is the minimal interface needed by builtin TLS functions.
+type TLS interface {
+	Connect(host string, port int, serverName string) ([]byte, error)
+	ConnectConfig(host string, port int, cfg *TLSConfigData) ([]byte, error)
+	Listen(host string, port int, certFile, keyFile string) ([]byte, error)
+	ListenConfig(host string, port int, cfg *TLSConfigData) ([]byte, error)
+	ListenAutoTLS(host string, port int, domain, email string) ([]byte, error)
+	Accept(listenerHandle []byte) ([]byte, error)
+	Read(connHandle []byte, n int) ([]byte, error)
+	Write(connHandle []byte, data []byte) (int, error)
+	Close(handle []byte) error
+	CloseListener(handle []byte) error
+	LoadCert(certFile, keyFile string) ([]byte, error)
+	LoadCertChain(files []string) ([]byte, error)
+	LoadCertPEM(certPEM, keyPEM []byte) ([]byte, error)
+	CertInfo(certHandle []byte) (map[string]interface{}, error)
+	PeerCerts(connHandle []byte) ([]map[string]interface{}, error)
+	NegotiatedProtocol(connHandle []byte) (string, error)
+	TLSVersion(connHandle []byte) (string, error)
+	HTTPSRequest(method, url string, headers map[string]string, body []byte, cfg *TLSConfigData) (*HTTPResponseData, error)
 }
 
 // SQLResultData represents the result of an SQL query or exec operation.
@@ -255,6 +291,39 @@ const (
 	HTMLEngineCompile
 	HTMLEngineSetDevMode
 	HTMLTemplateRender
+
+	// TLS builtins (sync)
+	TLSConnect
+	TLSConnectConfig
+	TLSListen
+	TLSListenConfig
+	TLSAccept
+	TLSRead
+	TLSWrite
+	TLSClose
+	TLSListenerClose
+	TLSLoadCert
+	TLSLoadCertChain
+	TLSLoadCertPEM
+	TLSCertInfo
+	TLSPeerCerts
+	TLSNegotiatedProtocol
+	TLSVersion
+
+	// TLS builtins (async)
+	AsyncTLSConnect
+	AsyncTLSConnectConfig
+	AsyncTLSAccept
+	AsyncTLSRead
+	AsyncTLSWrite
+	AsyncTLSClose
+	AsyncTLSListenerClose
+
+	// HTTPS builtins
+	HTTPSListen
+	HTTPSListenConfig
+	HTTPSListenAuto
+	AsyncHTTPSRequest
 )
 
 // TypeKind represents a type in the builtin type system.

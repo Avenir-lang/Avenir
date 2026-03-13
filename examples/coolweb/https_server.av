@@ -1,0 +1,17 @@
+pckg main;
+
+import std.coolweb;
+
+async fun main() | void {
+    var app | coolweb.App = coolweb.newApp();
+
+    app.get("/", fun(ctx | coolweb.Context) | coolweb.Response {
+        return ctx.text("Hello, HTTPS!");
+    });
+
+    app.get("/health", fun(ctx | coolweb.Context) | coolweb.Response {
+        return ctx.json({"status": "ok", "tls": true});
+    });
+
+    await app.runTLS(8443, "cert.pem", "key.pem");
+}
