@@ -1,6 +1,7 @@
 # std.sql
 
 Async SQL client library with connection pooling, parameterized queries, and transaction support.
+Built-in drivers currently include PostgreSQL and SQLite.
 
 ## Quick Start
 
@@ -25,6 +26,31 @@ async fun main() | void {
         var name | string = rows.getString("name");
         print("${id}: ${name}");
     }
+
+    await db.close();
+}
+```
+
+### SQLite Quick Start
+
+```avenir
+pckg main;
+
+import std.sql;
+import std.sql.sqlite;
+
+async fun main() | void {
+    sqlite.register();
+
+    var db | sql.DB = sql.open("sqlite://:memory:");
+    await db.exec("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)", []);
+    await db.exec("INSERT INTO users(name) VALUES(?)", ["Alice"]);
+
+    var rows | sql.Rows = await db.query("SELECT id, name FROM users", []);
+    while (rows.next()) {
+        print("${rows.getInt(\"id\")}: ${rows.getString(\"name\")}");
+    }
+    rows.close();
 
     await db.close();
 }
@@ -61,6 +87,7 @@ var db | sql.DB = await sql.connect(
 | `stats` | — | `dict<any>` | Pool statistics |
 
 All query methods are `async` and automatically acquire/release pool connections.
+Transactions keep one acquired connection until `commit()` or `rollback()`.
 
 ## ExecResult
 
@@ -117,7 +144,8 @@ var row | sql.Row? = await db.queryRow(
 );
 
 if (row != none) {
-    var r | sql.Row = row;
+    var rAny | any = row;
+    var r | sql.Row = rAny;
     var email | string = r.getString("email");
     print(email);
 }
@@ -156,6 +184,7 @@ try {
 | `rollback` | — | `void` | Rollback the transaction |
 
 Calling `commit()` or `rollback()` twice throws a `transactionError`.
+After `commit()` or `rollback()`, the transaction's connection is returned to the pool.
 
 ## Connection Pool
 
@@ -187,22 +216,30 @@ await db.exec(
     "INSERT INTO users(name, email) VALUES($1, $2)",
     ["Alice", "alice@example.com"]
 );
+
+// SQLite uses ? placeholders
+await db.exec(
+    "INSERT INTO users(name, email) VALUES(?, ?)",
+    ["Alice", "alice@example.com"]
+);
 ```
 
 ## Driver System
 
-Drivers are registered at startup. The PostgreSQL driver ships with the library.
+Drivers are registered at startup. PostgreSQL and SQLite drivers ship with the library.
 
 ```avenir
 import std.sql.postgres;
+import std.sql.sqlite;
 
 // Register before any database operations
 postgres.register();
+sqlite.register();
 ```
 
 The `connect()` and `open()` functions resolve the driver from the URL scheme:
 - `postgres://` or `postgresql://` → PostgreSQL driver
-- `sqlite://` → SQLite driver (future)
+- `sqlite://` → SQLite driver
 - `mysql://` → MySQL driver (future)
 
 ### Custom Drivers
@@ -281,7 +318,8 @@ async fun getUser(ctx | coolweb.Context) | coolweb.Response {
         return ctx.json({ "error": "not found" }, 404);
     }
 
-    var r | sql.Row = row;
+    var rAny | any = row;
+    var r | sql.Row = rAny;
     var rid | int = r.getInt("id");
     var rname | string = r.getString("name");
     var remail | string = r.getString("email");
@@ -315,4 +353,6 @@ std/sql/
         postgres.av     PostgreSQL driver, register()
         protocol.av     PG wire protocol constants and message builders
         types.av        PG OID type mapping
+    sqlite/
+        sqlite.av       SQLite driver, register()
 ```
