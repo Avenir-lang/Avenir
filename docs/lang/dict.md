@@ -1,7 +1,8 @@
 # Dictionaries (`dict`)
 
-`dict` is Avenir's first-class dictionary type. Keys are always `string`, and
-values are statically typed.
+`dict` is Avenir's first-class generic dictionary type with the full form
+`dict<K, V>` where `K` is the key type and `V` is the value type. For backward
+compatibility, `dict<V>` is shorthand for `dict<string, V>`.
 
 ## Syntax
 
@@ -13,29 +14,44 @@ var user | dict<any> = {
     "age": 30,
     isAdmin: true,
 };
+
+// With explicit key type
+var ids | dict<int, string> = {
+    1001: "alice",
+    1002: "bob",
+};
 ```
 
 Keys can be:
 
-- identifiers (`name`, `isAdmin`)
-- string literals (`"age"`, `'role'`)
+- identifiers (`name`, `isAdmin`) - only for string keys
+- string literals (`"age"`, `'role'`) - only for string keys  
+- expressions of type `K` - for generic key types
 
 Trailing commas are optional.
 
 ## Types
 
-Dictionary types are written as `dict<T>` where `T` is the value type:
+Dictionary types are written as `dict<K, V>` where `K` is the key type and `V` is the value type:
 
 ```avenir
+// String keys (shorthand form)
 var scores | dict<int> = { alice: 10, bob: 12 };
 var meta   | dict<any> = { env: "dev", retries: 3 };
+
+// Explicit key type
+var ids | dict<int, string> = { 1001: "alice", 1002: "bob" };
+var matrix | dict<string, dict<int, float>> = {
+    "row1": { 1: 1.1, 2: 1.2 },
+    "row2": { 1: 2.1, 2: 2.2 },
+};
 ```
 
-All values in the literal must be assignable to `T`. Mixed value types require
+All values in the literal must be assignable to `V`. Mixed value types require
 an explicit union type:
 
 ```avenir
-var mixed | dict< <int|string> > = { a: 1, b: "two" };
+var mixed | dict<string, <int|string>> = { a: 1, b: "two" };
 ```
 
 ## Access
@@ -57,23 +73,27 @@ key may be missing.
 
 ## Built-in Methods
 
+For a `dict<K, V>` (shorthand `dict<V>` uses `K = string`):
+
 | Method | Parameters | Returns | Notes |
 | --- | --- | --- | --- |
 | `length()` | — | `int` | Number of entries |
-| `keys()` | — | `list<string>` | Order not guaranteed |
-| `values()` | — | `list<T>` | Order not guaranteed |
-| `has(key)` | `string` | `bool` | Presence check |
-| `get(key)` | `string` | `T?` | `none` if missing |
-| `set(key, value)` | `string`, `T` | `void` | Mutates in place |
-| `remove(key)` | `string` | `bool` | Returns whether key existed |
+| `keys()` | — | `list<K>` | Order not guaranteed |
+| `values()` | — | `list<V>` | Order not guaranteed |
+| `has(key)` | `K` | `bool` | Presence check |
+| `get(key)` | `K` | `V?` | `none` if missing |
+| `set(key, value)` | `K`, `V` | `void` | Mutates in place |
+| `remove(key)` | `K` | `bool` | Returns whether key existed |
 
 ## Dicts vs Structs
 
 Structs have a fixed schema and named fields; dictionaries are dynamic and
-keyed by strings. Use structs for fixed, known shapes and dictionaries for
-dynamic data.
+keyed by their key type `K`. Use structs for fixed, known shapes and dictionaries for
+dynamic data or when you need non-string keys.
 
 ## Notes
 
 - Dicts are backed by a hash map; iteration order is not guaranteed.
 - `dict.set` mutates the dictionary in place.
+- `dict<K, V>` is a built-in parametric type (not a user-defined generic type).
+- For backward compatibility, `dict<V>` is equivalent to `dict<string, V>`.

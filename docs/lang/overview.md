@@ -36,6 +36,14 @@ Avenir is a statically-typed programming language designed for building reliable
 - **Default parameters**: Function parameters can have default values
 - **Named arguments**: Function calls support named arguments
 - **Methods**: Instance methods with receivers, static methods on types
+- **Decorators**: Function decorators with `@` syntax for metaprogramming
+- **Generics**: Generic functions with explicit type arguments
+
+### Program Structure
+
+- **Top-level statements**: Expression statements at module level for initialization
+- **Module system**: Import-based modular architecture
+- **Entry point**: `main()` function as program entry point
 
 ### Control Flow
 

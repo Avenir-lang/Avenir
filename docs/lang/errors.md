@@ -24,7 +24,37 @@ Exceptions are thrown using the `throw` statement:
 throw error("something went wrong");
 ```
 
-The expression must be of type `error`.
+The expression can be of type `error` or a declared struct type.
+
+## Typed Errors
+
+Functions can declare which error types they may throw using the `!` syntax
+after the return type:
+
+```avenir
+struct FileNotFound {
+    path | string
+}
+
+fun readFile(path | string) | string ! FileNotFound {
+    throw FileNotFound{path = path};
+}
+```
+
+Multiple thrown types are separated by commas:
+
+```avenir
+struct PermissionDenied {
+    operation | string
+}
+
+fun process() | void ! FileNotFound, PermissionDenied {
+    // ...
+}
+```
+
+The type checker validates that `throw` expressions inside the function body
+match the declared throws types.
 
 ## Catching Exceptions
 
@@ -40,6 +70,36 @@ try {
 }
 ```
 
+### Multiple Typed Catch Clauses
+
+You can catch different error types with multiple catch clauses:
+
+```avenir
+struct FileNotFound {
+    path | string
+}
+
+struct PermissionDenied {
+    operation | string
+}
+
+fun processFile(path | string) | void ! FileNotFound, PermissionDenied {
+    // ... code that may throw different error types
+}
+
+try {
+    processFile("/data.txt");
+} catch (e | FileNotFound) {
+    print("File not found: ${e.path}");
+} catch (e | PermissionDenied) {
+    print("Permission denied for: ${e.operation}");
+} catch (e | error) {
+    print("Generic error: ${errorMessage(e)}");
+}
+```
+
+The catch clauses are tried in order. The first matching type is executed, and subsequent clauses are skipped. The final `catch (e | error)` clause acts as a fallback for any remaining error types.
+
 Runtime and builtin errors are also catchable:
 
 ```avenir
@@ -52,7 +112,7 @@ try {
 }
 ```
 
-The catch variable must be of type `error`. The catch block is executed if an exception is thrown in the try block, including runtime and builtin errors.
+The catch variable can be of type `error` or a struct type. The catch block is executed if an exception is thrown in the try block, including runtime and builtin errors.
 
 ## Error Messages
 
@@ -132,7 +192,13 @@ Currently, Avenir uses exceptions for error handling. Functions can return `erro
 
 ## Error Type Restrictions
 
-The `error` type is a built-in type with a message and extensible metadata. User-defined error types are not currently supported. All exceptions must be of type `error`.
+The `error` type is a built-in type with a message and extensible metadata. User-defined error types are supported as struct types that can be thrown and caught. All exceptions must be of type `error` or a struct type.
+
+When using typed errors:
+- Struct types can be thrown and caught specifically
+- The `error` type catches all exceptions including struct types
+- Type checking ensures only declared error types are thrown
+- Multiple catch clauses allow fine-grained error handling
 
 ## Best Practices
 

@@ -20,6 +20,37 @@ pckg app.utils;
 
 The package name identifies the module and is used in imports.
 
+## Top-level Statements
+
+Modules can contain top-level expression statements that are executed during program initialization:
+
+```avenir
+pckg main;
+
+import std.coolweb;
+
+var app = App{};
+
+// Top-level statement executed during initialization
+app.setTemplates("templates/");
+app.addRoute("/", homeHandler);
+
+fun main() | void {
+    app.run(8080);
+}
+```
+
+Top-level statements are executed:
+- After all module variables are initialized
+- Before the `main()` function is called
+- In dependency order (modules imported first are initialized first)
+
+This is useful for:
+- Registering drivers or handlers
+- Configuring global state
+- Setting up templates or routes
+- Running initialization code
+
 ## Imports
 
 Modules can import other modules using the `import` statement:
