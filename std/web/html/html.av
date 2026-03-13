@@ -1,0 +1,23 @@
+pckg std.web.html;
+
+struct html {}
+
+pub fun build(fn | fun(Builder) | void) | string {
+    var handle | any = __builtin_html_new_builder();
+    var b | Builder = Builder{_handle = handle};
+    fn(b);
+    return __builtin_html_builder_result(handle);
+}
+
+pub fun escape(s | string) | string {
+    return __builtin_html_escape(s);
+}
+
+pub fun raw(s | string) | SafeString {
+    return SafeString{value = s};
+}
+
+pub fun newEngine(dir | string, opts | dict<any> = {}) | TemplateEngine {
+    var handle | any = __builtin_html_new_engine(dir, opts);
+    return TemplateEngine{_handle = handle};
+}

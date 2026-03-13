@@ -5915,3 +5915,413 @@ fun main() | void {
 		}
 	}
 }
+
+func TestCompileWorld_HTMLBuilder(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	realStd, err := filepath.Abs("../../std")
+	if err != nil {
+		t.Fatalf("failed to resolve std path: %v", err)
+	}
+	if _, err := os.Stat(realStd); os.IsNotExist(err) {
+		t.Skip("std/ directory not found, skipping HTML builder test")
+	}
+	if err := os.Symlink(realStd, filepath.Join(tmpDir, "std")); err != nil {
+		t.Fatalf("failed to symlink std: %v", err)
+	}
+
+	mainFile := filepath.Join(tmpDir, "main.av")
+	mainContent := `pckg main;
+
+import std.web.html as html;
+
+fun main() | void {
+    var result | string = html.build(fun(h | html.Builder) | void {
+        h.doctype();
+        h.html(fun() | void {
+            h.head(fun() | void {
+                h.title("Test Page");
+                h.meta({charset: "utf-8"});
+            });
+            h.body(fun() | void {
+                h.div({class: "container"}, fun() | void {
+                    h.h1("Hello World");
+                    h.p("This is a test");
+                });
+                h.ul(fun() | void {
+                    h.li("Item 1");
+                    h.li("Item 2");
+                });
+                h.br();
+                h.img({src: "/logo.png", alt: "Logo"});
+            });
+        });
+    });
+    print(result);
+
+    var escaped | string = html.escape("<script>alert('xss')</script>");
+    print(escaped);
+}
+`
+	if err := os.WriteFile(mainFile, []byte(mainContent), 0644); err != nil {
+		t.Fatalf("failed to write main.av: %v", err)
+	}
+
+	world, errs := modules.LoadWorld(mainFile)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("module loading error: %s", e)
+		}
+		t.Fatalf("failed to load world: %d errors", len(errs))
+	}
+
+	typeWorld := &types.World{
+		Modules: make(map[string]*types.ModuleInfo),
+		Entry:   world.Entry,
+	}
+	for modName, modAST := range world.Modules {
+		typeWorld.Modules[modName] = &types.ModuleInfo{
+			Name:  modName,
+			Prog:  modAST.Prog,
+			Scope: nil,
+		}
+	}
+
+	bindings, typeErrs := types.CheckWorldWithBindings(typeWorld)
+	if len(typeErrs) > 0 {
+		for _, e := range typeErrs {
+			t.Logf("type error: %s", e)
+		}
+		t.Fatalf("type checking failed: %d errors", len(typeErrs))
+	}
+
+	entryModInfo := typeWorld.Modules[world.Entry]
+	mod, compileErrs := ir.CompileWorld(typeWorld, entryModInfo, bindings)
+	if len(compileErrs) > 0 {
+		for _, e := range compileErrs {
+			t.Logf("compile error: %s", e)
+		}
+		t.Fatalf("compilation failed: %d errors", len(compileErrs))
+	}
+
+	var output []string
+	env := runtime.NewEnv(&testOutputWriter{output: &output})
+	machine := vm.NewVM(mod, env)
+	_, runErr := machine.RunMain()
+	if runErr != nil {
+		t.Fatalf("RunMain error: %v", runErr)
+	}
+
+	if len(output) != 2 {
+		t.Fatalf("expected 2 outputs, got %d: %v", len(output), output)
+	}
+
+	expectedHTML := `<!DOCTYPE html><html><head><title>Test Page</title><meta charset="utf-8"></head><body><div class="container"><h1>Hello World</h1><p>This is a test</p></div><ul><li>Item 1</li><li>Item 2</li></ul><br><img alt="Logo" src="/logo.png"></body></html>`
+	if output[0] != expectedHTML {
+		t.Fatalf("HTML output mismatch.\nExpected: %s\nGot:      %s", expectedHTML, output[0])
+	}
+
+	expectedEscaped := "&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;"
+	if output[1] != expectedEscaped {
+		t.Fatalf("escape output mismatch.\nExpected: %s\nGot:      %s", expectedEscaped, output[1])
+	}
+}
+
+func TestCompileWorld_HTMLTemplateEngine(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	realStd, err := filepath.Abs("../../std")
+	if err != nil {
+		t.Fatalf("failed to resolve std path: %v", err)
+	}
+	if _, err := os.Stat(realStd); os.IsNotExist(err) {
+		t.Skip("std/ directory not found, skipping HTML template test")
+	}
+	if err := os.Symlink(realStd, filepath.Join(tmpDir, "std")); err != nil {
+		t.Fatalf("failed to symlink std: %v", err)
+	}
+
+	tplDir := filepath.Join(tmpDir, "templates")
+	if err := os.Mkdir(tplDir, 0755); err != nil {
+		t.Fatalf("failed to create templates dir: %v", err)
+	}
+
+	baseTpl := `<!DOCTYPE html>
+<html>
+<head><title>{% block title %}Default{% endblock %}</title></head>
+<body>{% block content %}{% endblock %}</body>
+</html>`
+	if err := os.WriteFile(filepath.Join(tplDir, "base.html"), []byte(baseTpl), 0644); err != nil {
+		t.Fatalf("failed to write base.html: %v", err)
+	}
+
+	pageTpl := `{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}<h1>{{ name }}</h1>{% if show %}<p>visible</p>{% endif %}{% endblock %}`
+	if err := os.WriteFile(filepath.Join(tplDir, "page.html"), []byte(pageTpl), 0644); err != nil {
+		t.Fatalf("failed to write page.html: %v", err)
+	}
+
+	loopTpl := `<ul>{% for item in items %}<li>{{ item }}</li>{% endfor %}</ul>`
+	if err := os.WriteFile(filepath.Join(tplDir, "loop.html"), []byte(loopTpl), 0644); err != nil {
+		t.Fatalf("failed to write loop.html: %v", err)
+	}
+
+	mainFile := filepath.Join(tmpDir, "main.av")
+	mainContent := `pckg main;
+
+import std.web.html as html;
+
+fun main() | void {
+    var engine | html.TemplateEngine = html.newEngine("templates/");
+
+    var result1 | string = engine.render("page.html", {
+        "title": "Test",
+        "name": "Alice",
+        "show": true
+    });
+    print(result1);
+
+    var result2 | string = engine.render("loop.html", {
+        "items": ["a", "b", "c"]
+    });
+    print(result2);
+}
+`
+	if err := os.WriteFile(mainFile, []byte(mainContent), 0644); err != nil {
+		t.Fatalf("failed to write main.av: %v", err)
+	}
+
+	world, errs := modules.LoadWorld(mainFile)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("module loading error: %s", e)
+		}
+		t.Fatalf("failed to load world: %d errors", len(errs))
+	}
+
+	typeWorld := &types.World{
+		Modules: make(map[string]*types.ModuleInfo),
+		Entry:   world.Entry,
+	}
+	for modName, modAST := range world.Modules {
+		typeWorld.Modules[modName] = &types.ModuleInfo{
+			Name:  modName,
+			Prog:  modAST.Prog,
+			Scope: nil,
+		}
+	}
+
+	bindings, typeErrs := types.CheckWorldWithBindings(typeWorld)
+	if len(typeErrs) > 0 {
+		for _, e := range typeErrs {
+			t.Logf("type error: %s", e)
+		}
+		t.Fatalf("type checking failed: %d errors", len(typeErrs))
+	}
+
+	entryModInfo := typeWorld.Modules[world.Entry]
+	mod, compileErrs := ir.CompileWorld(typeWorld, entryModInfo, bindings)
+	if len(compileErrs) > 0 {
+		for _, e := range compileErrs {
+			t.Logf("compile error: %s", e)
+		}
+		t.Fatalf("compilation failed: %d errors", len(compileErrs))
+	}
+
+	var output []string
+	env := runtime.NewEnv(&testOutputWriter{output: &output})
+	env.SetExecRoot(tmpDir)
+	machine := vm.NewVM(mod, env)
+	_, runErr := machine.RunMain()
+	if runErr != nil {
+		t.Fatalf("RunMain error: %v", runErr)
+	}
+
+	if len(output) != 2 {
+		t.Fatalf("expected 2 outputs, got %d: %v", len(output), output)
+	}
+
+	expectedPage := "<!DOCTYPE html>\n<html>\n<head><title>Test</title></head>\n<body><h1>Alice</h1><p>visible</p></body>\n</html>"
+	if output[0] != expectedPage {
+		t.Fatalf("page output mismatch.\nExpected: %q\nGot:      %q", expectedPage, output[0])
+	}
+
+	expectedLoop := "<ul><li>a</li><li>b</li><li>c</li></ul>"
+	if output[1] != expectedLoop {
+		t.Fatalf("loop output mismatch.\nExpected: %q\nGot:      %q", expectedLoop, output[1])
+	}
+}
+
+func TestCompileWorld_TopLevelStmts(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	realStd, err := filepath.Abs("../../std")
+	if err != nil {
+		t.Fatalf("failed to resolve std path: %v", err)
+	}
+	if _, err := os.Stat(realStd); os.IsNotExist(err) {
+		t.Skip("std/ directory not found, skipping top-level stmts test")
+	}
+	if err := os.Symlink(realStd, filepath.Join(tmpDir, "std")); err != nil {
+		t.Fatalf("failed to symlink std: %v", err)
+	}
+
+	mainFile := filepath.Join(tmpDir, "main.av")
+	mainContent := `pckg main;
+
+import std.coolweb;
+
+var app | coolweb.App = coolweb.newApp();
+app.setTemplates("templates/");
+
+fun main() | int {
+    return 0;
+}
+`
+	if err := os.WriteFile(mainFile, []byte(mainContent), 0644); err != nil {
+		t.Fatalf("failed to write main.av: %v", err)
+	}
+
+	world, errs := modules.LoadWorld(mainFile)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("module loading error: %s", e)
+		}
+		t.Fatalf("failed to load world: %d errors", len(errs))
+	}
+
+	typeWorld := &types.World{
+		Modules: make(map[string]*types.ModuleInfo),
+		Entry:   world.Entry,
+	}
+	for modName, modAST := range world.Modules {
+		typeWorld.Modules[modName] = &types.ModuleInfo{
+			Name:  modName,
+			Prog:  modAST.Prog,
+			Scope: nil,
+		}
+	}
+
+	bindings, typeErrs := types.CheckWorldWithBindings(typeWorld)
+	if len(typeErrs) > 0 {
+		for _, e := range typeErrs {
+			t.Logf("type error: %s", e)
+		}
+		t.Fatalf("type checking failed: %d errors", len(typeErrs))
+	}
+
+	entryModInfo := typeWorld.Modules[world.Entry]
+	mod, compileErrs := ir.CompileWorld(typeWorld, entryModInfo, bindings)
+	if len(compileErrs) > 0 {
+		for _, e := range compileErrs {
+			t.Logf("compile error: %s", e)
+		}
+		t.Fatalf("compilation failed: %d errors", len(compileErrs))
+	}
+
+	if mod == nil {
+		t.Fatalf("expected non-nil module")
+	}
+	if mod.InitIndex < 0 {
+		t.Fatalf("expected __init__ function for top-level stmts, got InitIndex=%d", mod.InitIndex)
+	}
+}
+
+func TestCompileWorld_TopLevelMutation(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a module with a struct and a method
+	libDir := filepath.Join(tmpDir, "lib")
+	if err := os.MkdirAll(libDir, 0755); err != nil {
+		t.Fatalf("failed to create lib dir: %v", err)
+	}
+	libFile := filepath.Join(libDir, "lib.av")
+	libContent := `pckg lib;
+
+pub mut struct lib {
+    pub mut val | string
+}
+
+pub fun newLib() | lib {
+    return lib{val = "initial"};
+}
+
+pub fun (b | lib).setVal(v | string) | void {
+    print("inside setVal, setting to: " + v);
+    b.val = v;
+    print("after set, b.val = " + b.val);
+}
+`
+	if err := os.WriteFile(libFile, []byte(libContent), 0644); err != nil {
+		t.Fatalf("failed to write lib.av: %v", err)
+	}
+
+	mainFile := filepath.Join(tmpDir, "main.av")
+	mainContent := `pckg main;
+
+import lib;
+
+var box | lib.lib = lib.newLib();
+box.setVal("mutated");
+
+fun main() | void {
+    print("in main, box.val = " + box.val);
+}
+`
+	if err := os.WriteFile(mainFile, []byte(mainContent), 0644); err != nil {
+		t.Fatalf("failed to write main.av: %v", err)
+	}
+
+	world, errs := modules.LoadWorld(mainFile)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("module loading error: %s", e)
+		}
+		t.Fatalf("failed to load world: %d errors", len(errs))
+	}
+
+	typeWorld := &types.World{
+		Modules: make(map[string]*types.ModuleInfo),
+		Entry:   world.Entry,
+	}
+	for modName, modAST := range world.Modules {
+		typeWorld.Modules[modName] = &types.ModuleInfo{
+			Name:  modName,
+			Prog:  modAST.Prog,
+			Scope: nil,
+		}
+	}
+
+	bindings, typeErrs := types.CheckWorldWithBindings(typeWorld)
+	if len(typeErrs) > 0 {
+		for _, e := range typeErrs {
+			t.Logf("type error: %s", e)
+		}
+		t.Fatalf("type checking failed: %d errors", len(typeErrs))
+	}
+
+	entryModInfo := typeWorld.Modules[world.Entry]
+	mod, compileErrs := ir.CompileWorld(typeWorld, entryModInfo, bindings)
+	if len(compileErrs) > 0 {
+		for _, e := range compileErrs {
+			t.Logf("compile error: %s", e)
+		}
+		t.Fatalf("compilation failed: %d errors", len(compileErrs))
+	}
+
+	var output []string
+	env := runtime.NewEnv(&testOutputWriter{output: &output})
+	machine := vm.NewVM(mod, env)
+	_, runErr := machine.RunMain()
+	if runErr != nil {
+		t.Fatalf("runtime error: %v", runErr)
+	}
+
+	if len(output) != 3 {
+		t.Fatalf("expected 3 output lines, got %d: %v", len(output), output)
+	}
+	if output[2] != "in main, box.val = mutated" {
+		t.Fatalf("top-level method call did NOT persist struct field change: %q", output[2])
+	}
+}

@@ -286,6 +286,7 @@ func mergePrograms(programs []*ast.Program) *ast.Program {
 		merged.Funcs = append(merged.Funcs, prog.Funcs...)
 		merged.Structs = append(merged.Structs, prog.Structs...)
 		merged.Interfaces = append(merged.Interfaces, prog.Interfaces...)
+		merged.TopLevelStmts = append(merged.TopLevelStmts, prog.TopLevelStmts...)
 	}
 	return merged
 }

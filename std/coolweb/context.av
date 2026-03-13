@@ -45,3 +45,9 @@ pub fun (ctx | Context).textBody() | string {
 pub fun (ctx | Context).bodyBytes() | bytes {
     return ctx.request.body;
 }
+
+pub fun (ctx | Context).render(name | string, data | dict<any> = {}, status | int = 200) | Response {
+    var engine | any = ctx.state["_templateEngine"];
+    var html | string = __builtin_html_engine_render(engine, name, data);
+    return templateResponse(html, status);
+}

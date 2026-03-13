@@ -65,6 +65,15 @@ pub fun fileResponse(path | string, status | int = 200) | Response {
     };
 }
 
+pub fun templateResponse(body | string, status | int = 200) | Response {
+    var headers | dict<string> = { "Content-Type": "text/html; charset=utf-8" };
+    return Response{
+        status = status,
+        headers = headers,
+        body = fromString(body)
+    };
+}
+
 fun detectContentType(path | string) | string {
     if (path.endsWith(".html") || path.endsWith(".htm")) {
         return "text/html; charset=utf-8";

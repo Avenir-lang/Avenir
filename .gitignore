@@ -34,7 +34,6 @@ go.work.sum
 # .idea/
 # .vscode/
 avenir
-/avenir
 /*.avc
 /bin/
 /dist/

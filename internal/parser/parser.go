@@ -147,6 +147,14 @@ func (p *Parser) ParseProgram() *ast.Program {
 			if varStmt != nil {
 				prog.Vars = append(prog.Vars, varStmt.(*ast.VarDeclStmt))
 			}
+		} else if p.cur.Kind == token.Ident {
+			if len(decorators) > 0 {
+				p.errorf(decorators[0].AtPos, "decorator must be followed by a function declaration")
+			}
+			stmt := p.parseStatement()
+			if stmt != nil {
+				prog.TopLevelStmts = append(prog.TopLevelStmts, stmt)
+			}
 		} else {
 			if len(decorators) > 0 {
 				p.errorf(decorators[0].AtPos, "decorator must be followed by a function declaration")

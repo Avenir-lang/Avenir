@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} - {{ name }}{% endblock %}
+{% block content %}
+<div class="card">
+    <h1>{{ name }}</h1>
+    <h2>Menu</h2>
+    <ul>
+    {% for item in items %}
+        <li>{{ item }}</li>
+    {% endfor %}
+    </ul>
+</div>
+{% endblock %}

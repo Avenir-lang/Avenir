@@ -319,6 +319,9 @@ func collectFuncLiteralsFromProg(prog *ast.Program, modName string, mod *Module,
 	for _, fn := range prog.Funcs {
 		collectFuncLiteralsInNode(fn.Body, modName, mod, funcIndexByLiteral, allFuncNodes, allFuncInfos)
 	}
+	for _, stmt := range prog.TopLevelStmts {
+		collectFuncLiteralsInNode(stmt, modName, mod, funcIndexByLiteral, allFuncNodes, allFuncInfos)
+	}
 }
 
 func collectFuncLiteralsInNode(node ast.Node, modName string, mod *Module, funcIndexByLiteral map[*ast.FuncLiteral]int, allFuncNodes *[]ast.Node, allFuncInfos map[ast.Node]*resolver.FunctionInfo) {
@@ -466,6 +469,11 @@ func collectFuncLiteralsInNode(node ast.Node, modName string, mod *Module, funcI
 func findFuncLiteralInProg(prog *ast.Program, target *ast.FuncLiteral) bool {
 	for _, fn := range prog.Funcs {
 		if findFuncLiteralInNode(fn.Body, target) {
+			return true
+		}
+	}
+	for _, stmt := range prog.TopLevelStmts {
+		if findFuncLiteralInNode(stmt, target) {
 			return true
 		}
 	}
@@ -642,7 +650,16 @@ func topoSortModules(world *types.World) []string {
 func (c *Compiler) generateInitFunc(bindings *types.Bindings, funcIndexByDecl map[*ast.FunDecl]int) {
 	hasDecorators := bindings != nil && len(bindings.Decorators) > 0
 	hasGlobals := len(c.mod.Globals) > 0
-	if !hasDecorators && !hasGlobals {
+	hasTopLevelStmts := false
+	if c.world != nil {
+		for _, modInfo := range c.world.Modules {
+			if modInfo != nil && modInfo.Prog != nil && len(modInfo.Prog.TopLevelStmts) > 0 {
+				hasTopLevelStmts = true
+				break
+			}
+		}
+	}
+	if !hasDecorators && !hasGlobals && !hasTopLevelStmts {
 		return
 	}
 
@@ -676,6 +693,17 @@ func (c *Compiler) generateInitFunc(bindings *types.Bindings, funcIndexByDecl ma
 			fc.compileExpr(v.Value)
 			fc.chunk.Emit(OpStoreGlobal, gIdx, 0)
 			fc.chunk.Emit(OpPop, 0, 0)
+		}
+	}
+
+	// Phase 1.5: Compile top-level expression statements
+	for _, modName := range sortedModNames {
+		modInfo := c.world.Modules[modName]
+		if modInfo == nil {
+			continue
+		}
+		for _, stmt := range modInfo.Prog.TopLevelStmts {
+			fc.compileStmt(stmt)
 		}
 	}
 

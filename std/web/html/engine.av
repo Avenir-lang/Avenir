@@ -1,0 +1,29 @@
+pckg std.web.html;
+
+struct engine {}
+
+pub mut struct TemplateEngine {
+    pub mut _handle | any
+}
+
+pub struct Template {
+    pub _handle | any
+    pub name | string
+}
+
+pub fun (e | TemplateEngine).render(name | string, data | dict<any> = {}) | string {
+    return __builtin_html_engine_render(e._handle, name, data);
+}
+
+pub fun (e | TemplateEngine).compile(name | string) | Template {
+    var handle | any = __builtin_html_engine_compile(e._handle, name);
+    return Template{_handle = handle, name = name};
+}
+
+pub fun (e | TemplateEngine).setDevMode(enabled | bool) | void {
+    __builtin_html_engine_set_dev_mode(e._handle, enabled);
+}
+
+pub fun (t | Template).render(data | dict<any> = {}) | string {
+    return __builtin_html_template_render(t._handle, data);
+}

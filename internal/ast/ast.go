@@ -26,12 +26,13 @@ type TypeNode interface {
 // Program / Package
 
 type Program struct {
-	Package    *PackageDecl
-	Imports    []*ImportDecl
-	Vars       []*VarDeclStmt
-	Funcs      []*FunDecl
-	Structs    []*StructDecl
-	Interfaces []*InterfaceDecl
+	Package       *PackageDecl
+	Imports       []*ImportDecl
+	Vars          []*VarDeclStmt
+	Funcs         []*FunDecl
+	Structs       []*StructDecl
+	Interfaces    []*InterfaceDecl
+	TopLevelStmts []Stmt
 }
 
 func (p *Program) Pos() token.Position {

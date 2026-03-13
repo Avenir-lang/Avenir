@@ -1,0 +1,27 @@
+pckg main;
+
+import std.coolweb;
+
+var app | coolweb.App = coolweb.newApp();
+app.setTemplates("templates/");
+
+@app.get("/")
+fun index(ctx | coolweb.Context) | coolweb.Response {
+    return ctx.render("index.html", {
+        "title": "Home",
+        "message": "Welcome to CoolWeb with Templates!"
+    });
+}
+
+@app.get("/users/:name")
+fun userPage(ctx | coolweb.Context) | coolweb.Response {
+    return ctx.render("user.html", {
+        "title": "User Profile",
+        "name": ctx.params["name"],
+        "items": ["Dashboard", "Settings", "Logout"]
+    });
+}
+
+async fun main() | void {
+    await app.run(3000);
+}

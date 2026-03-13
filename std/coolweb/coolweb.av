@@ -8,14 +8,20 @@ pub mut struct App {
     pub mut router | Router
     pub mut middlewares | list<any>
     pub mut errorHandler | fun(Context, error) | Response
+    pub mut _templateEngine | any
 }
 
 pub fun newApp() | App {
     return App{
         router = newRouter(""),
         middlewares = [],
-        errorHandler = defaultErrorHandler
+        errorHandler = defaultErrorHandler,
+        _templateEngine = none
     };
+}
+
+pub fun (app | App).setTemplates(dir | string, opts | dict<any> = {}) | void {
+    app._templateEngine = __builtin_html_new_engine(dir, opts);
 }
 
 pub fun (app | App).addRoute(method | string, path | string, handler | fun(Context) | Response) | void {
@@ -132,6 +138,9 @@ async fun dispatchRequest(app | App, raw | dict<any>) | void {
     ctx.state.set("requestId", requestId);
     ctx.state.set("startNs", startNs);
     ctx.state.set("clientIp", clientIp);
+    if (app._templateEngine != none) {
+        ctx.state.set("_templateEngine", app._templateEngine);
+    }
     if (matched["found"] == true) {
         ctx.state.set("routePattern", matched["pattern"]);
     } else {

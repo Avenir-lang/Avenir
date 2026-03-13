@@ -1,0 +1,9 @@
+pckg std.web.html;
+
+struct errors {}
+
+pub struct TemplateError {
+    pub message | string
+    pub templateName | string
+    pub line | int
+}

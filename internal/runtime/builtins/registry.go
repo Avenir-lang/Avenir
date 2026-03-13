@@ -237,6 +237,24 @@ const (
 	AsyncSQLSqliteBegin
 	AsyncSQLSqliteCommit
 	AsyncSQLSqliteRollback
+
+	// HTML builder builtins
+	HTMLNewBuilder
+	HTMLTag
+	HTMLVoidTag
+	HTMLText
+	HTMLRawHTML
+	HTMLDoctype
+	HTMLBuilderResult
+	HTMLEscape
+	HTMLRaw
+
+	// HTML template engine builtins
+	HTMLNewEngine
+	HTMLEngineRender
+	HTMLEngineCompile
+	HTMLEngineSetDevMode
+	HTMLTemplateRender
 )
 
 // TypeKind represents a type in the builtin type system.

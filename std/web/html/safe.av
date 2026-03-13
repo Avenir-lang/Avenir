@@ -1,0 +1,7 @@
+pckg std.web.html;
+
+struct safe {}
+
+pub struct SafeString {
+    pub value | string
+}

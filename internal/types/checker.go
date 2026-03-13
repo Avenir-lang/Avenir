@@ -336,6 +336,11 @@ func CheckWorldWithBindings(world *World) (*Bindings, []error) {
 			c.checkTopLevelVar(v)
 		}
 
+		// Type-check top-level expression statements
+		for _, stmt := range modInfo.Prog.TopLevelStmts {
+			c.checkStmt(stmt)
+		}
+
 		// Type-check all functions in this module
 		for _, fn := range modInfo.Prog.Funcs {
 			c.checkFunc(fn)

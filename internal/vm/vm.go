@@ -1820,6 +1820,39 @@ func equalValues(a, b value.Value) bool {
 			}
 		}
 		return true
+	case value.KindOptional:
+		if a.Optional == nil && b.Optional == nil {
+			return true
+		}
+		if a.Optional == nil || b.Optional == nil {
+			return false
+		}
+		if !a.Optional.IsSome && !b.Optional.IsSome {
+			return true
+		}
+		if a.Optional.IsSome != b.Optional.IsSome {
+			return false
+		}
+		return equalValues(a.Optional.Value, b.Optional.Value)
+	case value.KindStruct:
+		if a.Struct == b.Struct {
+			return true
+		}
+		if a.Struct == nil || b.Struct == nil {
+			return false
+		}
+		if a.Struct.TypeIndex != b.Struct.TypeIndex {
+			return false
+		}
+		if len(a.Struct.Fields) != len(b.Struct.Fields) {
+			return false
+		}
+		for i := range a.Struct.Fields {
+			if !equalValues(a.Struct.Fields[i], b.Struct.Fields[i]) {
+				return false
+			}
+		}
+		return true
 	case value.KindClosure:
 		// Closures are equal if they reference the same function and have same upvalues
 		// For simplicity, we compare function pointers

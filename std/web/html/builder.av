@@ -1,0 +1,323 @@
+pckg std.web.html;
+
+struct builder {}
+
+pub struct Builder {
+    pub _handle | any
+}
+
+pub fun (b | Builder).text(content | string) | void {
+    __builtin_html_text(b._handle, content);
+}
+
+pub fun (b | Builder).rawHtml(content | string) | void {
+    __builtin_html_raw_html(b._handle, content);
+}
+
+pub fun (b | Builder).doctype() | void {
+    __builtin_html_doctype(b._handle);
+}
+
+pub fun (b | Builder).tag(name | string, first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, name, first, second);
+}
+
+pub fun (b | Builder).voidTag(name | string, attrs | dict<string> = {}) | void {
+    __builtin_html_void_tag(b._handle, name, attrs);
+}
+
+pub fun (b | Builder).html(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "html", first, second);
+}
+
+pub fun (b | Builder).head(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "head", first, second);
+}
+
+pub fun (b | Builder).body(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "body", first, second);
+}
+
+pub fun (b | Builder).div(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "div", first, second);
+}
+
+pub fun (b | Builder).span(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "span", first, second);
+}
+
+pub fun (b | Builder).p(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "p", first, second);
+}
+
+pub fun (b | Builder).a(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "a", first, second);
+}
+
+pub fun (b | Builder).h1(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "h1", first, second);
+}
+
+pub fun (b | Builder).h2(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "h2", first, second);
+}
+
+pub fun (b | Builder).h3(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "h3", first, second);
+}
+
+pub fun (b | Builder).h4(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "h4", first, second);
+}
+
+pub fun (b | Builder).h5(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "h5", first, second);
+}
+
+pub fun (b | Builder).h6(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "h6", first, second);
+}
+
+pub fun (b | Builder).ul(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "ul", first, second);
+}
+
+pub fun (b | Builder).ol(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "ol", first, second);
+}
+
+pub fun (b | Builder).li(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "li", first, second);
+}
+
+pub fun (b | Builder).dl(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "dl", first, second);
+}
+
+pub fun (b | Builder).dt(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "dt", first, second);
+}
+
+pub fun (b | Builder).dd(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "dd", first, second);
+}
+
+pub fun (b | Builder).table(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "table", first, second);
+}
+
+pub fun (b | Builder).thead(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "thead", first, second);
+}
+
+pub fun (b | Builder).tbody(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "tbody", first, second);
+}
+
+pub fun (b | Builder).tfoot(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "tfoot", first, second);
+}
+
+pub fun (b | Builder).tr(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "tr", first, second);
+}
+
+pub fun (b | Builder).th(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "th", first, second);
+}
+
+pub fun (b | Builder).td(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "td", first, second);
+}
+
+pub fun (b | Builder).caption(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "caption", first, second);
+}
+
+pub fun (b | Builder).form(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "form", first, second);
+}
+
+pub fun (b | Builder).textarea(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "textarea", first, second);
+}
+
+pub fun (b | Builder).button(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "button", first, second);
+}
+
+pub fun (b | Builder).select(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "select", first, second);
+}
+
+pub fun (b | Builder).option(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "option", first, second);
+}
+
+pub fun (b | Builder).optgroup(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "optgroup", first, second);
+}
+
+pub fun (b | Builder).label(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "label", first, second);
+}
+
+pub fun (b | Builder).fieldset(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "fieldset", first, second);
+}
+
+pub fun (b | Builder).legend(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "legend", first, second);
+}
+
+pub fun (b | Builder).title(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "title", first, second);
+}
+
+pub fun (b | Builder).style(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "style", first, second);
+}
+
+pub fun (b | Builder).script(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "script", first, second);
+}
+
+pub fun (b | Builder).noscript(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "noscript", first, second);
+}
+
+pub fun (b | Builder).main(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "main", first, second);
+}
+
+pub fun (b | Builder).header(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "header", first, second);
+}
+
+pub fun (b | Builder).footer(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "footer", first, second);
+}
+
+pub fun (b | Builder).nav(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "nav", first, second);
+}
+
+pub fun (b | Builder).aside(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "aside", first, second);
+}
+
+pub fun (b | Builder).section(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "section", first, second);
+}
+
+pub fun (b | Builder).article(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "article", first, second);
+}
+
+pub fun (b | Builder).strong(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "strong", first, second);
+}
+
+pub fun (b | Builder).em(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "em", first, second);
+}
+
+pub fun (b | Builder).small(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "small", first, second);
+}
+
+pub fun (b | Builder).code(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "code", first, second);
+}
+
+pub fun (b | Builder).pre(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "pre", first, second);
+}
+
+pub fun (b | Builder).blockquote(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "blockquote", first, second);
+}
+
+pub fun (b | Builder).abbr(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "abbr", first, second);
+}
+
+pub fun (b | Builder).cite(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "cite", first, second);
+}
+
+pub fun (b | Builder).figure(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "figure", first, second);
+}
+
+pub fun (b | Builder).figcaption(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "figcaption", first, second);
+}
+
+pub fun (b | Builder).details(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "details", first, second);
+}
+
+pub fun (b | Builder).summary(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "summary", first, second);
+}
+
+pub fun (b | Builder).dialog(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "dialog", first, second);
+}
+
+pub fun (b | Builder).time(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "time", first, second);
+}
+
+pub fun (b | Builder).audio(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "audio", first, second);
+}
+
+pub fun (b | Builder).video(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "video", first, second);
+}
+
+pub fun (b | Builder).picture(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "picture", first, second);
+}
+
+pub fun (b | Builder).br() | void {
+    __builtin_html_void_tag(b._handle, "br", {});
+}
+
+pub fun (b | Builder).hr() | void {
+    __builtin_html_void_tag(b._handle, "hr", {});
+}
+
+pub fun (b | Builder).wbr() | void {
+    __builtin_html_void_tag(b._handle, "wbr", {});
+}
+
+pub fun (b | Builder).img(attrs | dict<string> = {}) | void {
+    __builtin_html_void_tag(b._handle, "img", attrs);
+}
+
+pub fun (b | Builder).input(attrs | dict<string> = {}) | void {
+    __builtin_html_void_tag(b._handle, "input", attrs);
+}
+
+pub fun (b | Builder).meta(attrs | dict<string> = {}) | void {
+    __builtin_html_void_tag(b._handle, "meta", attrs);
+}
+
+pub fun (b | Builder).link(attrs | dict<string> = {}) | void {
+    __builtin_html_void_tag(b._handle, "link", attrs);
+}
+
+pub fun (b | Builder).source(attrs | dict<string> = {}) | void {
+    __builtin_html_void_tag(b._handle, "source", attrs);
+}
+
+pub fun (b | Builder).col(attrs | dict<string> = {}) | void {
+    __builtin_html_void_tag(b._handle, "col", attrs);
+}
+
+pub fun (b | Builder).colgroup(first | any = none, second | any = none) | void {
+    __builtin_html_tag(b._handle, "colgroup", first, second);
+}

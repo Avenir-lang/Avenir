@@ -11,6 +11,7 @@ import (
 	_ "avenir/internal/runtime/builtins/dict"
 	_ "avenir/internal/runtime/builtins/errors"
 	_ "avenir/internal/runtime/builtins/fs"
+	_ "avenir/internal/runtime/builtins/html"
 	_ "avenir/internal/runtime/builtins/http"
 	_ "avenir/internal/runtime/builtins/io"
 	_ "avenir/internal/runtime/builtins/json"

@@ -1,0 +1,44 @@
+pckg main;
+
+import std.web.html as html;
+
+fun main() | void {
+    var page | string = html.build(fun(h | html.Builder) | void {
+        h.doctype();
+        h.html(fun() | void {
+            h.head(fun() | void {
+                h.meta({charset: "utf-8"});
+                h.title("HTML Builder Demo");
+                h.link({rel: "stylesheet", href: "/style.css"});
+            });
+            h.body({class: "dark-theme"}, fun() | void {
+                h.header(fun() | void {
+                    h.nav({class: "navbar"}, fun() | void {
+                        h.a({href: "/"}, "Home");
+                        h.a({href: "/about"}, "About");
+                    });
+                });
+                h.main(fun() | void {
+                    h.h1("Welcome");
+                    h.p("This page was built with the Avenir HTML Builder DSL.");
+                    h.div({class: "card"}, fun() | void {
+                        h.h2("Features");
+                        h.ul(fun() | void {
+                            h.li("Type-safe HTML generation");
+                            h.li("Auto-escaping by default");
+                            h.li("Nested closures for structure");
+                        });
+                    });
+                });
+                h.footer(fun() | void {
+                    h.p("Built with Avenir");
+                });
+            });
+        });
+    });
+    print(page);
+
+    var userInput | string = "<script>alert('xss')</script>";
+    var safe | string = html.escape(userInput);
+    print(safe);
+}
