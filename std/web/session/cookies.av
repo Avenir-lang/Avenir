@@ -1,0 +1,90 @@
+pckg std.web.session;
+
+struct cookies {}
+
+pub struct Cookie {
+    pub name | string
+    pub value | string
+    pub path | string = "/"
+    pub domain | string = ""
+    pub httpOnly | bool = true
+    pub secure | bool = true
+    pub sameSite | string = "Lax"
+    pub maxAge | int = 0
+}
+
+pub fun serializeCookie(c | Cookie) | string {
+    var result | string = c.name + "=" + c.value;
+    if (c.path != "") {
+        result = result + "; Path=" + c.path;
+    }
+    if (c.domain != "") {
+        result = result + "; Domain=" + c.domain;
+    }
+    if (c.maxAge > 0) {
+        result = result + "; Max-Age=${c.maxAge}";
+    }
+    if (c.httpOnly) {
+        result = result + "; HttpOnly";
+    }
+    if (c.secure) {
+        result = result + "; Secure";
+    }
+    if (c.sameSite != "") {
+        result = result + "; SameSite=" + c.sameSite;
+    }
+    return result;
+}
+
+pub fun parseCookies(header | string) | dict<string> {
+    var result | dict<string> = {};
+    if (header == "") {
+        return result;
+    }
+    var pairs | list<string> = header.split(";");
+    var i | int = 0;
+    while (i < pairs.length()) {
+        var pairRaw | string = pairs.get(i);
+        var pair | string = pairRaw.trim();
+        if (pair != "") {
+            var eqIdx | int = pair.indexOf("=");
+            if (eqIdx >= 0) {
+                var parts | list<string> = pair.split("=");
+                var keyRaw | string = parts.get(0);
+                var key | string = keyRaw.trim();
+                var val | string = "";
+                if (parts.length() > 1) {
+                    var valRaw | string = parts.get(1);
+                    val = valRaw.trim();
+                }
+                result.set(key, val);
+            }
+        }
+        i = i + 1;
+    }
+    return result;
+}
+
+pub fun deleteCookieString(name | string, path | string = "/") | string {
+    return name + "=; Path=" + path + "; Max-Age=0; HttpOnly; Secure; SameSite=Lax";
+}
+
+pub fun newCookie(name | string, value | string) | Cookie {
+    return Cookie{
+        name = name,
+        value = value
+    };
+}
+
+pub fun newCookieWithOptions(name | string, value | string, path | string, domain | string, httpOnly | bool, secure | bool, sameSite | string, maxAge | int) | Cookie {
+    return Cookie{
+        name = name,
+        value = value,
+        path = path,
+        domain = domain,
+        httpOnly = httpOnly,
+        secure = secure,
+        sameSite = sameSite,
+        maxAge = maxAge
+    };
+}

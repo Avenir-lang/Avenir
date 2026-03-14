@@ -1,0 +1,58 @@
+pckg main;
+
+import std.coolweb;
+import std.web.session as sess;
+
+var app | coolweb.App = coolweb.newApp();
+
+var memStore | sess.MemoryStore = sess.newMemoryStore();
+var adapter | sess.StoreAdapter = memStore.toAdapter();
+var config | sess.SessionConfig = sess.newConfigWithOptions(
+    "sid", 3600, "super-secret-key", true, true, "Lax", "/", "", "store", 0, adapter
+);
+
+app.use(coolweb.sessionMiddleware(config));
+
+@app.get("/")
+fun index(ctx | coolweb.Context) | coolweb.Response {
+    var s | sess.Session = ctx.session;
+    var visits | any = s.get("visits");
+    if (visits == none) {
+        visits = 0;
+    }
+    visits = visits + 1;
+    s.set("visits", visits);
+    return ctx.json({ "visits": visits });
+}
+
+@app.get("/login")
+fun login(ctx | coolweb.Context) | coolweb.Response {
+    var s | sess.Session = ctx.session;
+    s.regenerate();
+    s.set("userId", 42);
+    s.set("role", "admin");
+    return ctx.json({ "ok": true, "message": "logged in" });
+}
+
+@app.get("/profile")
+fun profile(ctx | coolweb.Context) | coolweb.Response {
+    var s | sess.Session = ctx.session;
+    var userId | any = s.get("userId");
+    if (userId == none) {
+        return ctx.json({ "error": "not authenticated" }, 401);
+    }
+    var role | any = s.get("role");
+    return ctx.json({ "userId": userId, "role": role });
+}
+
+@app.get("/logout")
+fun logout(ctx | coolweb.Context) | coolweb.Response {
+    var s | sess.Session = ctx.session;
+    s.destroy();
+    return ctx.json({ "ok": true, "message": "logged out" });
+}
+
+fun main() | int {
+    app.run(8080);
+    return 0;
+}

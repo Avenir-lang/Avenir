@@ -1,0 +1,11 @@
+pckg std.web.session;
+
+struct errors {}
+
+pub struct SessionError {
+    pub message | string
+}
+
+pub fun sessionError(msg | string) | error {
+    return error("session: " + msg);
+}

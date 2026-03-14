@@ -1,0 +1,40 @@
+pckg std.web.session;
+
+struct config {}
+
+pub struct SessionConfig {
+    pub cookieName | string = "sid"
+    pub ttlSeconds | int = 3600
+    pub secret | string = ""
+    pub secureCookies | bool = true
+    pub httpOnly | bool = true
+    pub sameSite | string = "Lax"
+    pub path | string = "/"
+    pub domain | string = ""
+    pub mode | string = "store"
+    pub idleTimeoutSeconds | int = 0
+    pub sessionStore | StoreAdapter
+}
+
+pub fun newConfig(secret | string) | SessionConfig {
+    return SessionConfig{
+        secret = secret,
+        sessionStore = noopAdapter()
+    };
+}
+
+pub fun newConfigWithOptions(cookieName | string, ttlSeconds | int, secret | string, secureCookies | bool, httpOnly | bool, sameSite | string, path | string, domain | string, mode | string, idleTimeoutSeconds | int, sessionStore | StoreAdapter) | SessionConfig {
+    return SessionConfig{
+        cookieName = cookieName,
+        ttlSeconds = ttlSeconds,
+        secret = secret,
+        secureCookies = secureCookies,
+        httpOnly = httpOnly,
+        sameSite = sameSite,
+        path = path,
+        domain = domain,
+        mode = mode,
+        idleTimeoutSeconds = idleTimeoutSeconds,
+        sessionStore = sessionStore
+    };
+}

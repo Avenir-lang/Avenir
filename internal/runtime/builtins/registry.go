@@ -235,6 +235,7 @@ const (
 	CryptoJWTVerifyES256
 	CryptoPasswordHash
 	CryptoPasswordVerify
+	CryptoRandomBytes
 
 	// Async builtins
 	AsyncTimeSleep

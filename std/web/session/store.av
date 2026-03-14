@@ -1,0 +1,185 @@
+pckg std.web.session;
+
+import std.json as jsonlib;
+import std.fs as fslib;
+
+struct store {}
+
+pub struct StoreAdapter {
+    pub loadFn | fun(string) | any
+    pub saveFn | fun(string, dict<any>, int, int) | void
+    pub deleteFn | fun(string) | void
+}
+
+pub fun noopAdapter() | StoreAdapter {
+    var lFn | fun(string) | any = fun(id | string) | any { return none; };
+    var sFn | fun(string, dict<any>, int, int) | void = fun(id | string, data | dict<any>, createdAt | int, expiresAt | int) | void {};
+    var dFn | fun(string) | void = fun(id | string) | void {};
+    return StoreAdapter{
+        loadFn = lFn,
+        saveFn = sFn,
+        deleteFn = dFn
+    };
+}
+
+pub fun (a | StoreAdapter).load(id | string) | any {
+    return a.loadFn(id);
+}
+
+pub fun (a | StoreAdapter).save(id | string, data | dict<any>, createdAt | int, expiresAt | int) | void {
+    a.saveFn(id, data, createdAt, expiresAt);
+}
+
+pub fun (a | StoreAdapter).deleteSession(id | string) | void {
+    a.deleteFn(id);
+}
+
+pub mut struct MemoryStore {
+    pub mut _sessions | dict<any>
+}
+
+pub fun newMemoryStore() | MemoryStore {
+    return MemoryStore{
+        _sessions = {}
+    };
+}
+
+pub fun (s | MemoryStore).load(id | string) | any {
+    if (!s._sessions.has(id)) {
+        return none;
+    }
+    var entry | dict<any> = s._sessions[id];
+    var expiresAt | int = entry["expiresAt"];
+    var nowSeconds | int = __builtin_time_now() / 1000000000;
+    if (nowSeconds >= expiresAt) {
+        s._sessions.remove(id);
+        return none;
+    }
+    return entry;
+}
+
+pub fun (s | MemoryStore).save(id | string, data | dict<any>, createdAt | int, expiresAt | int) | void {
+    var entry | dict<any> = {
+        "data": data,
+        "createdAt": createdAt,
+        "expiresAt": expiresAt
+    };
+    s._sessions.set(id, entry);
+}
+
+pub fun (s | MemoryStore).deleteSession(id | string) | void {
+    if (s._sessions.has(id)) {
+        s._sessions.remove(id);
+    }
+}
+
+pub fun (s | MemoryStore).cleanup() | void {
+    var nowSeconds | int = __builtin_time_now() / 1000000000;
+    var keys | list<string> = s._sessions.keys();
+    var i | int = 0;
+    while (i < keys.length()) {
+        var key | string = keys.get(i);
+        var entry | dict<any> = s._sessions[key];
+        var expiresAt | int = entry["expiresAt"];
+        if (nowSeconds >= expiresAt) {
+            s._sessions.remove(key);
+        }
+        i = i + 1;
+    }
+}
+
+pub fun (s | MemoryStore).count() | int {
+    return s._sessions.length();
+}
+
+pub fun (s | MemoryStore).toAdapter() | StoreAdapter {
+    var lFn | fun(string) | any = fun(id | string) | any {
+        return s.load(id);
+    };
+    var sFn | fun(string, dict<any>, int, int) | void = fun(id | string, data | dict<any>, createdAt | int, expiresAt | int) | void {
+        s.save(id, data, createdAt, expiresAt);
+    };
+    var dFn | fun(string) | void = fun(id | string) | void {
+        s.deleteSession(id);
+    };
+    return StoreAdapter{
+        loadFn = lFn,
+        saveFn = sFn,
+        deleteFn = dFn
+    };
+}
+
+pub mut struct FileStore {
+    pub mut _dir | string
+}
+
+pub fun newFileStore(dir | string) | FileStore {
+    if (!fslib.exists(dir)) {
+        fslib.mkdir(dir);
+    }
+    return FileStore{
+        _dir = dir
+    };
+}
+
+fun sessionFilePath(dir | string, id | string) | string {
+    return dir + "/" + id + ".json";
+}
+
+pub fun (s | FileStore).load(id | string) | any {
+    var path | string = sessionFilePath(s._dir, id);
+    if (!fslib.exists(path)) {
+        return none;
+    }
+    var f | fslib.File = fslib.open(path, "r");
+    var content | string = f.readString();
+    f.close();
+    if (content == "") {
+        return none;
+    }
+    var entry | dict<any> = jsonlib.parse(content);
+    var expiresAt | int = entry["expiresAt"];
+    var nowSeconds | int = __builtin_time_now() / 1000000000;
+    if (nowSeconds >= expiresAt) {
+        fslib.remove(path);
+        return none;
+    }
+    return entry;
+}
+
+pub fun (s | FileStore).save(id | string, data | dict<any>, createdAt | int, expiresAt | int) | void {
+    var entry | dict<any> = {
+        "data": data,
+        "createdAt": createdAt,
+        "expiresAt": expiresAt
+    };
+    var content | string = jsonlib.stringify(entry);
+    var path | string = sessionFilePath(s._dir, id);
+    var f | fslib.File = fslib.open(path, "w");
+    f.writeString(content);
+    f.close();
+}
+
+pub fun (s | FileStore).deleteSession(id | string) | void {
+    var path | string = sessionFilePath(s._dir, id);
+    if (fslib.exists(path)) {
+        fslib.remove(path);
+    }
+}
+
+pub fun (s | FileStore).toAdapter() | StoreAdapter {
+    var lFn | fun(string) | any = fun(id | string) | any {
+        return s.load(id);
+    };
+    var sFn | fun(string, dict<any>, int, int) | void = fun(id | string, data | dict<any>, createdAt | int, expiresAt | int) | void {
+        s.save(id, data, createdAt, expiresAt);
+    };
+    var dFn | fun(string) | void = fun(id | string) | void {
+        s.deleteSession(id);
+    };
+    return StoreAdapter{
+        loadFn = lFn,
+        saveFn = sFn,
+        deleteFn = dFn
+    };
+}

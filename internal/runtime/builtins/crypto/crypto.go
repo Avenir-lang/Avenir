@@ -42,6 +42,7 @@ func init() {
 	registerJWTVerifyES256()
 	registerPasswordHash()
 	registerPasswordVerify()
+	registerRandomBytes()
 }
 
 func registerSHA256() {
@@ -892,6 +893,35 @@ func ecdsaRawSignatureParts(sig []byte, size int) (*big.Int, *big.Int, bool) {
 		return nil, nil, false
 	}
 	return r, s, true
+}
+
+func registerRandomBytes() {
+	builtins.Register(builtins.Builtin{
+		Meta: builtins.Meta{
+			ID:           builtins.CryptoRandomBytes,
+			Name:         "__builtin_crypto_random_bytes",
+			Arity:        1,
+			ParamNames:   []string{"n"},
+			Params:       []builtins.TypeRef{{Kind: builtins.TypeInt}},
+			Result:       builtins.TypeRef{Kind: builtins.TypeBytes},
+			ReceiverType: builtins.TypeVoid,
+			MethodName:   "",
+		},
+		Call: func(env builtins.Env, args []interface{}) (interface{}, error) {
+			n, err := requireIntArg(args, 0, "__builtin_crypto_random_bytes")
+			if err != nil {
+				return value.Value{}, err
+			}
+			if n <= 0 || n > 1024 {
+				return value.Value{}, fmt.Errorf("__builtin_crypto_random_bytes: n must be between 1 and 1024, got %d", n)
+			}
+			buf := make([]byte, n)
+			if _, err := rand.Read(buf); err != nil {
+				return value.Value{}, fmt.Errorf("__builtin_crypto_random_bytes: %w", err)
+			}
+			return value.Bytes(buf), nil
+		},
+	})
 }
 
 func cloneDict(src map[string]value.Value) map[string]value.Value {

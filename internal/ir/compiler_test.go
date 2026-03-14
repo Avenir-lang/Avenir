@@ -6419,3 +6419,168 @@ fun main() | int {
 		}
 	}
 }
+
+func TestCompileWorld_SessionModule(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	realStd, err := filepath.Abs("../../std")
+	if err != nil {
+		t.Fatalf("failed to resolve std path: %v", err)
+	}
+	if _, err := os.Stat(realStd); os.IsNotExist(err) {
+		t.Skip("std/ directory not found, skipping session module test")
+	}
+	if err := os.Symlink(realStd, filepath.Join(tmpDir, "std")); err != nil {
+		t.Fatalf("failed to symlink std: %v", err)
+	}
+
+	mainFile := filepath.Join(tmpDir, "main.av")
+	mainContent := `pckg main;
+
+import std.web.session as sess;
+
+fun main() | int {
+    var memStore | sess.MemoryStore = sess.newMemoryStore();
+    print("store_count:" + "${memStore.count()}");
+
+    var adapter | sess.StoreAdapter = memStore.toAdapter();
+    var config | sess.SessionConfig = sess.newConfigWithOptions("sid", 3600, "test-secret-key", false, true, "Lax", "/", "", "store", 0, adapter);
+    print("config_cookie:" + config.cookieName);
+    print("config_ttl:" + "${config.ttlSeconds}");
+    print("config_mode:" + config.mode);
+
+    var s | sess.Session = sess.newSession(3600);
+    print("session_new:" + "${s.isNew()}");
+    print("session_changed:" + "${s.isChanged()}");
+
+    s.set("userId", 42);
+    print("session_changed_after_set:" + "${s.isChanged()}");
+
+    var userId | any = s.get("userId");
+    print("userId:" + "${userId}");
+
+    print("has_userId:" + "${s.has("userId")}");
+    print("has_missing:" + "${s.has("missing")}");
+
+    s.delete("userId");
+    print("has_userId_after_delete:" + "${s.has("userId")}");
+
+    s.set("a", 1);
+    s.set("b", 2);
+    s.clear();
+    print("has_a_after_clear:" + "${s.has("a")}");
+
+    var c | sess.Cookie = sess.newCookieWithOptions("sid", "abc123", "/", "", true, true, "Lax", 3600);
+    var cookieStr | string = sess.serializeCookie(c);
+    print("cookie:" + cookieStr);
+
+    var parsed | dict<string> = sess.parseCookies("sid=abc123; theme=dark");
+    print("parsed_sid:" + parsed["sid"]);
+    print("parsed_theme:" + parsed["theme"]);
+
+    var delCookie | string = sess.deleteCookieString("sid");
+    print("delete_cookie:" + delCookie);
+
+    memStore.save("test-id", { "key": "value" }, 1000, 9999999999);
+    print("store_count_after_save:" + "${memStore.count()}");
+    var loaded | any = memStore.load("test-id");
+    if (loaded != none) {
+        print("store_loaded:true");
+    }
+    memStore.deleteSession("test-id");
+    print("store_count_after_delete:" + "${memStore.count()}");
+
+    var manager | sess.SessionManager = sess.newManager(config);
+    var s2 | sess.Session = manager.loadSession("", adapter);
+    print("manager_new_session:" + "${s2.isNew()}");
+
+    return 0;
+}
+`
+	if err := os.WriteFile(mainFile, []byte(mainContent), 0644); err != nil {
+		t.Fatalf("failed to write main.av: %v", err)
+	}
+
+	world, errs := modules.LoadWorld(mainFile)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("module loading error: %s", e)
+		}
+		t.Fatalf("failed to load world: %d errors", len(errs))
+	}
+
+	typeWorld := &types.World{
+		Modules: make(map[string]*types.ModuleInfo),
+		Entry:   world.Entry,
+	}
+	for modName, modAST := range world.Modules {
+		typeWorld.Modules[modName] = &types.ModuleInfo{
+			Name:  modName,
+			Prog:  modAST.Prog,
+			Scope: nil,
+		}
+	}
+
+	bindings, typeErrs := types.CheckWorldWithBindings(typeWorld)
+	if len(typeErrs) > 0 {
+		for _, e := range typeErrs {
+			t.Logf("type error: %s", e)
+		}
+		t.Fatalf("type checking failed: %d errors", len(typeErrs))
+	}
+
+	entryModInfo := typeWorld.Modules[world.Entry]
+	mod, compileErrs := ir.CompileWorld(typeWorld, entryModInfo, bindings)
+	if len(compileErrs) > 0 {
+		for _, e := range compileErrs {
+			t.Logf("compile error: %s", e)
+		}
+		t.Fatalf("compilation failed: %d errors", len(compileErrs))
+	}
+
+	if mod == nil {
+		t.Fatalf("expected non-nil module")
+	}
+	if mod.MainIndex < 0 {
+		t.Fatalf("expected main function index >= 0")
+	}
+
+	var output []string
+	env := runtime.NewEnv(&testOutputWriter{output: &output})
+	machine := vm.NewVM(mod, env)
+	_, runErr := machine.RunMain()
+	if runErr != nil {
+		t.Fatalf("runtime error: %v", runErr)
+	}
+
+	expected2 := []string{
+		"store_count:0",
+		"config_cookie:sid",
+		"config_ttl:3600",
+		"config_mode:store",
+		"session_new:true",
+		"session_changed:false",
+		"session_changed_after_set:true",
+		"userId:42",
+		"has_userId:true",
+		"has_missing:false",
+		"has_userId_after_delete:false",
+		"has_a_after_clear:false",
+		"cookie:sid=abc123; Path=/; Max-Age=3600; HttpOnly; Secure; SameSite=Lax",
+		"parsed_sid:abc123",
+		"parsed_theme:dark",
+		"delete_cookie:sid=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax",
+		"store_count_after_save:1",
+		"store_loaded:true",
+		"store_count_after_delete:0",
+		"manager_new_session:true",
+	}
+	if len(output) != len(expected2) {
+		t.Fatalf("expected %d output lines, got %d: %v", len(expected2), len(output), output)
+	}
+	for i, exp := range expected2 {
+		if output[i] != exp {
+			t.Fatalf("output[%d] = %q, expected %q", i, output[i], exp)
+		}
+	}
+}

@@ -10,6 +10,7 @@ pub mut struct Context {
     pub mut query | dict<string>
     pub mut cookies | dict<string>
     pub mut state | dict<any>
+    pub mut session | any = none
     pub _connHandle | any
 }
 

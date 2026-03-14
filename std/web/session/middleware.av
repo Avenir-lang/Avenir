@@ -1,0 +1,147 @@
+pckg std.web.session;
+
+import std.crypto;
+import std.crypto.jwt;
+
+struct middleware {}
+
+pub mut struct SessionManager {
+    pub config | SessionConfig
+}
+
+pub fun newManager(config | SessionConfig) | SessionManager {
+    return SessionManager{
+        config = config
+    };
+}
+
+pub fun (m | SessionManager).loadSession(cookieValue | string, adapter | StoreAdapter) | Session {
+    if (m.config.mode == "jwt") {
+        return m.loadJWTSession(cookieValue);
+    }
+    return m.loadStoreSession(cookieValue, adapter);
+}
+
+fun (m | SessionManager).loadStoreSession(cookieValue | string, adapter | StoreAdapter) | Session {
+    if (cookieValue == "") {
+        return newSession(m.config.ttlSeconds);
+    }
+    var entry | any = adapter.load(cookieValue);
+    if (entry == none) {
+        return newSession(m.config.ttlSeconds);
+    }
+    var entryDict | dict<any> = entry;
+    var data | dict<any> = entryDict["data"];
+    var createdAt | int = entryDict["createdAt"];
+    var expiresAt | int = entryDict["expiresAt"];
+    var nowSeconds | int = __builtin_time_now() / 1000000000;
+    if (nowSeconds >= expiresAt) {
+        adapter.deleteSession(cookieValue);
+        return newSession(m.config.ttlSeconds);
+    }
+    if (m.config.idleTimeoutSeconds > 0) {
+        var idleDeadline | int = nowSeconds - m.config.idleTimeoutSeconds;
+        if (createdAt < idleDeadline) {
+            adapter.deleteSession(cookieValue);
+            return newSession(m.config.ttlSeconds);
+        }
+    }
+    return Session{
+        id = cookieValue,
+        data = data,
+        createdAt = createdAt,
+        expiresAt = expiresAt,
+        _changed = false,
+        _destroyed = false,
+        _isNew = false
+    };
+}
+
+fun (m | SessionManager).loadJWTSession(cookieValue | string) | Session {
+    if (cookieValue == "") {
+        return newSession(m.config.ttlSeconds);
+    }
+    var secretBytes | bytes = fromString(m.config.secret);
+    var result | dict<any> = jwt.verifyHS256(cookieValue, secretBytes);
+    var valid | bool = result["valid"];
+    if (!valid) {
+        return newSession(m.config.ttlSeconds);
+    }
+    var payload | dict<any> = result["payload"];
+    var sid | string = "";
+    if (payload.has("sid")) {
+        sid = payload["sid"];
+    } else {
+        return newSession(m.config.ttlSeconds);
+    }
+    var createdAt | int = 0;
+    if (payload.has("iat")) {
+        createdAt = payload["iat"];
+    }
+    var expiresAt | int = 0;
+    if (payload.has("exp")) {
+        expiresAt = payload["exp"];
+    }
+    var data | dict<any> = {};
+    if (payload.has("data")) {
+        data = payload["data"];
+    }
+    var nowSeconds | int = __builtin_time_now() / 1000000000;
+    if (expiresAt > 0 && nowSeconds >= expiresAt) {
+        return newSession(m.config.ttlSeconds);
+    }
+    return Session{
+        id = sid,
+        data = data,
+        createdAt = createdAt,
+        expiresAt = expiresAt,
+        _changed = false,
+        _destroyed = false,
+        _isNew = false
+    };
+}
+
+pub fun (m | SessionManager).saveSession(s | Session, adapter | StoreAdapter) | string {
+    if (m.config.mode == "jwt") {
+        return m.saveJWTSession(s);
+    }
+    return m.saveStoreSession(s, adapter);
+}
+
+fun (m | SessionManager).saveStoreSession(s | Session, adapter | StoreAdapter) | string {
+    adapter.save(s.id, s.data, s.createdAt, s.expiresAt);
+    return m.buildSessionCookie(s.id);
+}
+
+fun (m | SessionManager).saveJWTSession(s | Session) | string {
+    var payload | dict<any> = {
+        "sid": s.id,
+        "data": s.data,
+        "iat": s.createdAt,
+        "exp": s.expiresAt
+    };
+    var secretBytes | bytes = fromString(m.config.secret);
+    var token | string = jwt.signHS256(payload, secretBytes);
+    return m.buildSessionCookie(token);
+}
+
+pub fun (m | SessionManager).destroySession(s | Session, adapter | StoreAdapter) | string {
+    if (m.config.mode == "store") {
+        adapter.deleteSession(s.id);
+    }
+    return deleteCookieString(m.config.cookieName, m.config.path);
+}
+
+pub fun (m | SessionManager).buildSessionCookie(val | string) | string {
+    var c | Cookie = Cookie{
+        name = m.config.cookieName,
+        value = val,
+        path = m.config.path,
+        domain = m.config.domain,
+        httpOnly = m.config.httpOnly,
+        secure = m.config.secureCookies,
+        sameSite = m.config.sameSite,
+        maxAge = m.config.ttlSeconds
+    };
+    return serializeCookie(c);
+}

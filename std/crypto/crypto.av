@@ -25,3 +25,7 @@ pub fun base64UrlEncode(data | bytes) | string {
 pub fun base64UrlDecode(text | string) | bytes {
     return __builtin_crypto_base64url_decode(text);
 }
+
+pub fun randomBytes(n | int) | bytes {
+    return __builtin_crypto_random_bytes(n);
+}

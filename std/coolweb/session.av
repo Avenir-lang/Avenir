@@ -1,0 +1,27 @@
+pckg std.coolweb;
+
+import std.web.session as sess;
+
+struct session {}
+
+pub fun sessionMiddleware(config | sess.SessionConfig) | fun(Context, fun() | Response) | Response {
+    var manager | sess.SessionManager = sess.newManager(config);
+    var adapter | sess.StoreAdapter = config.sessionStore;
+    return fun(ctx | Context, next | fun() | Response) | Response {
+        var cookieValue | string = "";
+        if (ctx.cookies.has(config.cookieName)) {
+            cookieValue = ctx.cookies[config.cookieName];
+        }
+        var s | sess.Session = manager.loadSession(cookieValue, adapter);
+        ctx.session = s;
+        var resp | Response = next();
+        if (s._destroyed) {
+            var delCookie | string = manager.destroySession(s, adapter);
+            resp.headers.set("Set-Cookie", delCookie);
+        } else if (s._changed || s._isNew) {
+            var setCookie | string = manager.saveSession(s, adapter);
+            resp.headers.set("Set-Cookie", setCookie);
+        }
+        return resp;
+    };
+}

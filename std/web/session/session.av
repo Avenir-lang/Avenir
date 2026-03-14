@@ -1,0 +1,95 @@
+pckg std.web.session;
+
+import std.crypto;
+
+struct session {}
+
+pub mut struct Session {
+    pub mut id | string
+    pub mut data | dict<any>
+    pub mut createdAt | int
+    pub mut expiresAt | int
+    pub mut _changed | bool = false
+    pub mut _destroyed | bool = false
+    pub mut _isNew | bool = false
+}
+
+pub fun newSession(ttlSeconds | int) | Session {
+    var nowSeconds | int = __builtin_time_now() / 1000000000;
+    return Session{
+        id = generateSessionId(),
+        data = {},
+        createdAt = nowSeconds,
+        expiresAt = nowSeconds + ttlSeconds,
+        _changed = false,
+        _destroyed = false,
+        _isNew = true
+    };
+}
+
+pub fun generateSessionId() | string {
+    var raw | bytes = crypto.randomBytes(32);
+    return crypto.base64UrlEncode(raw);
+}
+
+pub fun (s | Session).get(key | string) | any {
+    if (s.data.has(key)) {
+        return s.data[key];
+    }
+    return none;
+}
+
+pub fun (s | Session).set(key | string, val | any) | void {
+    s.data.set(key, val);
+    s._changed = true;
+}
+
+pub fun (s | Session).delete(key | string) | void {
+    if (s.data.has(key)) {
+        s.data.remove(key);
+        s._changed = true;
+    }
+}
+
+pub fun (s | Session).has(key | string) | bool {
+    return s.data.has(key);
+}
+
+pub fun (s | Session).clear() | void {
+    s.data = {};
+    s._changed = true;
+}
+
+pub fun (s | Session).regenerate() | void {
+    s.id = generateSessionId();
+    s._changed = true;
+    s._isNew = true;
+}
+
+pub fun (s | Session).destroy() | void {
+    s.data = {};
+    s._destroyed = true;
+}
+
+pub fun (s | Session).isNew() | bool {
+    return s._isNew;
+}
+
+pub fun (s | Session).isChanged() | bool {
+    return s._changed;
+}
+
+pub fun (s | Session).isDestroyed() | bool {
+    return s._destroyed;
+}
+
+pub fun (s | Session).isExpired() | bool {
+    var nowSeconds | int = __builtin_time_now() / 1000000000;
+    return nowSeconds >= s.expiresAt;
+}
+
+pub fun (s | Session).touch(ttlSeconds | int) | void {
+    var nowSeconds | int = __builtin_time_now() / 1000000000;
+    s.expiresAt = nowSeconds + ttlSeconds;
+    s._changed = true;
+}
