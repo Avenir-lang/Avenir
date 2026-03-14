@@ -6584,3 +6584,141 @@ fun main() | int {
 		}
 	}
 }
+
+func TestCompileWorld_WebSocketModule(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	realStd, err := filepath.Abs("../../std")
+	if err != nil {
+		t.Fatalf("failed to resolve std path: %v", err)
+	}
+	if _, err := os.Stat(realStd); os.IsNotExist(err) {
+		t.Skip("std/ directory not found, skipping WebSocket module test")
+	}
+	if err := os.Symlink(realStd, filepath.Join(tmpDir, "std")); err != nil {
+		t.Fatalf("failed to symlink std: %v", err)
+	}
+
+	mainFile := filepath.Join(tmpDir, "main.av")
+	mainContent := `pckg main;
+
+import std.websocket as ws;
+
+fun main() | void {
+    print("MSG_TEXT:${ws.msgText()}");
+    print("MSG_BINARY:${ws.msgBinary()}");
+    print("MSG_CLOSE:${ws.msgClose()}");
+    print("MSG_PING:${ws.msgPing()}");
+    print("MSG_PONG:${ws.msgPong()}");
+
+    var msg | ws.Message = ws.newMessage(1, "hello", fromString("hello"), 0);
+    print("isText:${msg.isText()}");
+    print("isBinary:${msg.isBinary()}");
+    print("isClose:${msg.isClose()}");
+    print("text:" + msg.text);
+
+    var closeMsg | ws.Message = ws.newMessage(8, "", fromString(""), 1000);
+    print("closeIsClose:${closeMsg.isClose()}");
+    print("closeCode:${closeMsg.closeCode}");
+
+    var err1 | ws.WebSocketError = ws.wsError("test error", 1001);
+    print("wsError:" + err1.message);
+    print("wsErrorCode:${err1.code}");
+
+    var err2 | ws.WebSocketClosed = ws.closedError(1000, "normal");
+    print("closedMsg:" + err2.message);
+    print("closedCode:${err2.code}");
+    print("closedReason:" + err2.reason);
+
+    var err3 | ws.ProtocolError = ws.protocolError("bad frame");
+    print("protoErr:" + err3.message);
+
+    var hub | ws.Hub = ws.newHub();
+    print("hubCount:${hub.count()}");
+}
+`
+	if err := os.WriteFile(mainFile, []byte(mainContent), 0644); err != nil {
+		t.Fatalf("failed to write main.av: %v", err)
+	}
+
+	world, errs := modules.LoadWorld(mainFile)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("module loading error: %s", e)
+		}
+		t.Fatalf("failed to load world: %d errors", len(errs))
+	}
+
+	typeWorld := &types.World{
+		Modules: make(map[string]*types.ModuleInfo),
+		Entry:   world.Entry,
+	}
+	for modName, modAST := range world.Modules {
+		typeWorld.Modules[modName] = &types.ModuleInfo{
+			Name:  modName,
+			Prog:  modAST.Prog,
+			Scope: nil,
+		}
+	}
+
+	bindings, typeErrs := types.CheckWorldWithBindings(typeWorld)
+	if len(typeErrs) > 0 {
+		for _, e := range typeErrs {
+			t.Logf("type error: %s", e)
+		}
+		t.Fatalf("type checking failed: %d errors", len(typeErrs))
+	}
+
+	entryModInfo := typeWorld.Modules[world.Entry]
+	mod, compileErrs := ir.CompileWorld(typeWorld, entryModInfo, bindings)
+	if len(compileErrs) > 0 {
+		for _, e := range compileErrs {
+			t.Logf("compile error: %s", e)
+		}
+		t.Fatalf("compilation failed: %d errors", len(compileErrs))
+	}
+
+	if mod == nil {
+		t.Fatalf("expected non-nil module")
+	}
+	if mod.MainIndex < 0 {
+		t.Fatalf("expected main function index >= 0")
+	}
+
+	var output []string
+	env := runtime.NewEnv(&testOutputWriter{output: &output})
+	machine := vm.NewVM(mod, env)
+	_, runErr := machine.RunMain()
+	if runErr != nil {
+		t.Fatalf("runtime error: %v", runErr)
+	}
+
+	expected3 := []string{
+		"MSG_TEXT:1",
+		"MSG_BINARY:2",
+		"MSG_CLOSE:8",
+		"MSG_PING:9",
+		"MSG_PONG:10",
+		"isText:true",
+		"isBinary:false",
+		"isClose:false",
+		"text:hello",
+		"closeIsClose:true",
+		"closeCode:1000",
+		"wsError:test error",
+		"wsErrorCode:1001",
+		"closedMsg:websocket closed: normal",
+		"closedCode:1000",
+		"closedReason:normal",
+		"protoErr:websocket protocol error: bad frame",
+		"hubCount:0",
+	}
+	if len(output) != len(expected3) {
+		t.Fatalf("expected %d output lines, got %d: %v", len(expected3), len(output), output)
+	}
+	for i, exp := range expected3 {
+		if output[i] != exp {
+			t.Fatalf("output[%d] = %q, expected %q", i, output[i], exp)
+		}
+	}
+}

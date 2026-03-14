@@ -1,0 +1,21 @@
+pckg std.websocket;
+
+struct upgrade {}
+
+pub async fun upgradeRequest(reqHandle | any, protocols | list<string> = [], headers | dict<string> = {}) | WebSocket {
+    var result | dict<any> = await __builtin_async_ws_upgrade(reqHandle, protocols, headers);
+    var wsHandle | any = result["handle"];
+    var info | dict<any> = __builtin_ws_get_info(wsHandle);
+
+    var hdrs | dict<string> = info["headers"];
+
+    return WebSocket{
+        id = info["id"],
+        path = info["path"],
+        headers = hdrs,
+        query = info["query"],
+        remoteAddr = info["remoteAddr"],
+        isOpen = true,
+        _handle = wsHandle
+    };
+}

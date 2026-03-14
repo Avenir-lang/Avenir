@@ -1,0 +1,39 @@
+pckg std.websocket;
+
+struct message {}
+
+pub struct Message {
+    pub msgType | int
+    pub text | string
+    pub data | bytes
+    pub closeCode | int
+}
+
+pub fun (m | Message).isText() | bool {
+    return m.msgType == 1;
+}
+
+pub fun (m | Message).isBinary() | bool {
+    return m.msgType == 2;
+}
+
+pub fun (m | Message).isClose() | bool {
+    return m.msgType == 8;
+}
+
+pub fun (m | Message).isPing() | bool {
+    return m.msgType == 9;
+}
+
+pub fun (m | Message).isPong() | bool {
+    return m.msgType == 10;
+}
+
+pub fun newMessage(msgType | int, text | string, data | bytes, closeCode | int) | Message {
+    return Message{
+        msgType = msgType,
+        text = text,
+        data = data,
+        closeCode = closeCode
+    };
+}

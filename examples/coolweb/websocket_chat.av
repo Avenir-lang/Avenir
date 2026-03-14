@@ -1,0 +1,37 @@
+pckg main;
+
+import std.coolweb as cw;
+import std.websocket as ws;
+
+var app | cw.App = cw.newApp();
+var hub | ws.Hub = ws.newHub();
+
+@app.get("/")
+fun index(ctx | cw.Context) | cw.Response {
+    return ctx.html("<html><body><h1>Chat</h1><script>var s=new WebSocket('ws://'+location.host+'/chat');s.onmessage=function(e){document.getElementById('m').innerHTML+=e.data+'<br>'};function send(){s.send(document.getElementById('i').value);document.getElementById('i').value=''}</script><div id='m'></div><input id='i'><button onclick='send()'>Send</button></body></html>");
+}
+
+@app.websocket("/chat")
+async fun chat(ctx | cw.Context, conn | ws.WebSocket) | void {
+    hub.add(conn);
+    print("Client joined: ${conn.id} (${hub.count()} connected)");
+    while (conn.isOpen) {
+        try {
+            var msg | ws.Message = await conn.receive();
+            if (msg.isText()) {
+                await hub.broadcast(msg.text);
+            } else if (msg.isClose()) {
+                break;
+            }
+        } catch (e | error) {
+            break;
+        }
+    }
+    hub.remove(conn);
+    hub.cleanup();
+    print("Client left: ${conn.id} (${hub.count()} connected)");
+}
+
+async fun main() | void {
+    await app.run(8080);
+}

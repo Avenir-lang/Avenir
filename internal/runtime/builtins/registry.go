@@ -15,6 +15,7 @@ type Env interface {
 	HTTP() HTTP
 	SQL() SQL
 	TLS() TLS
+	WS() WS
 	ExecRoot() string
 	// CallClosure calls a closure with the given arguments.
 	// This enables builtins to call first-class functions (e.g., in map/filter/reduce).
@@ -117,6 +118,40 @@ type SQLResultData struct {
 	Rows         []map[string]interface{}
 	RowsAffected int64
 	LastInsertID int64
+}
+
+// WSUpgradeResult represents the result of a WebSocket upgrade.
+type WSUpgradeResult struct {
+	Handle   []byte
+	Protocol string
+}
+
+// WSMessageData represents a received WebSocket message.
+type WSMessageData struct {
+	Type int // 1=text, 2=binary, 8=close, 9=ping, 10=pong
+	Data []byte
+	Code int // close code (only for close frames)
+}
+
+// WSInfoData represents WebSocket connection metadata.
+type WSInfoData struct {
+	ID         string
+	Path       string
+	Headers    map[string]string
+	Query      string
+	RemoteAddr string
+}
+
+// WS is the minimal interface needed by builtin WebSocket functions.
+type WS interface {
+	Upgrade(reqHandle []byte, protocols []string, extraHeaders map[string]string) (*WSUpgradeResult, error)
+	SendText(handle []byte, text string) error
+	SendBytes(handle []byte, data []byte) error
+	SendPing(handle []byte, data []byte) error
+	Receive(handle []byte) (*WSMessageData, error)
+	Close(handle []byte, code int, reason string) error
+	SetReadLimit(handle []byte, limit int64) error
+	GetInfo(handle []byte) (*WSInfoData, error)
 }
 
 // HTTPRequestData represents a parsed HTTP request returned by the runtime service.
@@ -325,6 +360,18 @@ const (
 	HTTPSListenConfig
 	HTTPSListenAuto
 	AsyncHTTPSRequest
+
+	// WebSocket builtins (async)
+	AsyncWSUpgrade
+	AsyncWSSendText
+	AsyncWSSendBytes
+	AsyncWSSendPing
+	AsyncWSReceive
+	AsyncWSClose
+
+	// WebSocket builtins (sync)
+	WSSetReadLimit
+	WSGetInfo
 )
 
 // TypeKind represents a type in the builtin type system.

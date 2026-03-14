@@ -1,0 +1,34 @@
+pckg std.websocket;
+
+struct errors {}
+
+pub struct WebSocketError {
+    pub message | string
+    pub code | int
+}
+
+pub struct WebSocketClosed {
+    pub message | string
+    pub code | int
+    pub reason | string
+}
+
+pub struct ProtocolError {
+    pub message | string
+}
+
+pub fun wsError(msg | string, code | int) | WebSocketError {
+    return WebSocketError{message = msg, code = code};
+}
+
+pub fun closedError(code | int, reason | string) | WebSocketClosed {
+    return WebSocketClosed{
+        message = "websocket closed: " + reason,
+        code = code,
+        reason = reason
+    };
+}
+
+pub fun protocolError(msg | string) | ProtocolError {
+    return ProtocolError{message = "websocket protocol error: " + msg};
+}

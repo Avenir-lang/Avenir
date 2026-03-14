@@ -1,0 +1,68 @@
+pckg std.websocket;
+
+struct connection {}
+
+pub mut struct WebSocket {
+    pub id | string
+    pub path | string
+    pub headers | dict<string>
+    pub query | string
+    pub remoteAddr | string
+    pub mut isOpen | bool = true
+    pub _handle | any
+}
+
+pub async fun (ws | WebSocket).sendText(text | string) | void {
+    if (!ws.isOpen) {
+        throw error("websocket: connection is closed");
+    }
+    await __builtin_async_ws_send_text(ws._handle, text);
+}
+
+pub async fun (ws | WebSocket).sendBytes(data | bytes) | void {
+    if (!ws.isOpen) {
+        throw error("websocket: connection is closed");
+    }
+    await __builtin_async_ws_send_bytes(ws._handle, data);
+}
+
+pub async fun (ws | WebSocket).sendPing(data | bytes = fromString("")) | void {
+    if (!ws.isOpen) {
+        throw error("websocket: connection is closed");
+    }
+    await __builtin_async_ws_send_ping(ws._handle, data);
+}
+
+pub async fun (ws | WebSocket).receive() | Message {
+    if (!ws.isOpen) {
+        throw error("websocket: connection is closed");
+    }
+    var raw | dict<any> = await __builtin_async_ws_receive(ws._handle);
+    var msgType | int = raw["type"];
+    var text | string = raw["text"];
+    var data | bytes = raw["data"];
+    var code | int = raw["code"];
+
+    if (msgType == 8) {
+        ws.isOpen = false;
+    }
+
+    return Message{
+        msgType = msgType,
+        text = text,
+        data = data,
+        closeCode = code
+    };
+}
+
+pub async fun (ws | WebSocket).close(code | int = 1000, reason | string = "") | void {
+    if (!ws.isOpen) {
+        return;
+    }
+    ws.isOpen = false;
+    await __builtin_async_ws_close(ws._handle, code, reason);
+}
+
+pub fun (ws | WebSocket).setReadLimit(limit | int) | void {
+    __builtin_ws_set_read_limit(ws._handle, limit);
+}

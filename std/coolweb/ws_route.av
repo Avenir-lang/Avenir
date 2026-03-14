@@ -1,0 +1,66 @@
+pckg std.coolweb;
+
+struct ws_route {}
+
+pub struct WSRoute {
+    pub pattern | string
+    pub segments | list<string>
+    pub paramNames | list<string>
+    pub handler | any
+}
+
+pub fun compileWSRoute(pattern | string, handler | any) | WSRoute {
+    var segments | list<string> = splitWSPath(pattern);
+    var paramNames | list<string> = [];
+    var i | int = 0;
+    while (i < segments.length()) {
+        var seg | string = segments.get(i);
+        if (seg.startsWith(":")) {
+            var name | string = seg.replace(":", "");
+            paramNames = paramNames.append(name);
+        }
+        i = i + 1;
+    }
+    return WSRoute{
+        pattern = pattern,
+        segments = segments,
+        paramNames = paramNames,
+        handler = handler
+    };
+}
+
+pub fun matchWSRoute(rt | WSRoute, pathSegments | list<string>) | dict<any> {
+    if (rt.segments.length() != pathSegments.length()) {
+        return { "matched": false };
+    }
+    var params | dict<string> = {};
+    var i | int = 0;
+    while (i < rt.segments.length()) {
+        var routeSeg | string = rt.segments.get(i);
+        var pathSeg | string = pathSegments.get(i);
+        if (routeSeg.startsWith(":")) {
+            var paramName | string = routeSeg.replace(":", "");
+            params.set(paramName, pathSeg);
+        } else {
+            if (routeSeg != pathSeg) {
+                return { "matched": false };
+            }
+        }
+        i = i + 1;
+    }
+    return { "matched": true, "params": params };
+}
+
+fun splitWSPath(path | string) | list<string> {
+    var parts | list<string> = path.split("/");
+    var result | list<string> = [];
+    var i | int = 0;
+    while (i < parts.length()) {
+        var part | string = parts.get(i);
+        if (part != "") {
+            result = result.append(part);
+        }
+        i = i + 1;
+    }
+    return result;
+}

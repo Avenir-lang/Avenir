@@ -1,0 +1,15 @@
+pckg std.websocket;
+
+struct websocket {}
+
+var MSG_TEXT | int = 1;
+var MSG_BINARY | int = 2;
+var MSG_CLOSE | int = 8;
+var MSG_PING | int = 9;
+var MSG_PONG | int = 10;
+
+pub fun msgText() | int { return 1; }
+pub fun msgBinary() | int { return 2; }
+pub fun msgClose() | int { return 8; }
+pub fun msgPing() | int { return 9; }
+pub fun msgPong() | int { return 10; }

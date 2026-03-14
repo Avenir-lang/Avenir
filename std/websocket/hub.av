@@ -1,0 +1,75 @@
+pckg std.websocket;
+
+struct hub {}
+
+pub mut struct Hub {
+    pub mut connections | list<any>
+}
+
+pub fun newHub() | Hub {
+    return Hub{connections = []};
+}
+
+pub fun (h | Hub).add(ws | WebSocket) | void {
+    h.connections = h.connections.append(ws);
+}
+
+pub fun (h | Hub).remove(ws | WebSocket) | void {
+    var result | list<any> = [];
+    var i | int = 0;
+    while (i < h.connections.length()) {
+        var conn | WebSocket = h.connections.get(i);
+        if (conn.id != ws.id) {
+            result = result.append(conn);
+        }
+        i = i + 1;
+    }
+    h.connections = result;
+}
+
+pub async fun (h | Hub).broadcast(text | string) | void {
+    var i | int = 0;
+    while (i < h.connections.length()) {
+        var conn | WebSocket = h.connections.get(i);
+        if (conn.isOpen) {
+            try {
+                await conn.sendText(text);
+            } catch (e | error) {
+                conn.isOpen = false;
+            }
+        }
+        i = i + 1;
+    }
+}
+
+pub async fun (h | Hub).broadcastBytes(data | bytes) | void {
+    var i | int = 0;
+    while (i < h.connections.length()) {
+        var conn | WebSocket = h.connections.get(i);
+        if (conn.isOpen) {
+            try {
+                await conn.sendBytes(data);
+            } catch (e | error) {
+                conn.isOpen = false;
+            }
+        }
+        i = i + 1;
+    }
+}
+
+pub fun (h | Hub).count() | int {
+    return h.connections.length();
+}
+
+pub fun (h | Hub).cleanup() | void {
+    var result | list<any> = [];
+    var i | int = 0;
+    while (i < h.connections.length()) {
+        var conn | WebSocket = h.connections.get(i);
+        if (conn.isOpen) {
+            result = result.append(conn);
+        }
+        i = i + 1;
+    }
+    h.connections = result;
+}

@@ -7,6 +7,7 @@ pub mut struct Router {
     pub mut routes | list<any>
     pub mut middlewares | list<any>
     pub mut children | list<any>
+    pub mut wsRoutes | list<any>
 }
 
 pub fun newRouter(prefix | string) | Router {
@@ -14,7 +15,8 @@ pub fun newRouter(prefix | string) | Router {
         prefix = prefix,
         routes = [],
         middlewares = [],
-        children = []
+        children = [],
+        wsRoutes = []
     };
 }
 
@@ -66,6 +68,19 @@ pub fun (r | Router).options(path | string) | fun(fun(Context) | Response) | fun
     };
 }
 
+pub fun (r | Router).addWSRoute(path | string, handler | any) | void {
+    var fullPattern | string = r.prefix + path;
+    var rt | WSRoute = compileWSRoute(fullPattern, handler);
+    r.wsRoutes = r.wsRoutes.append(rt);
+}
+
+pub fun (r | Router).websocket(path | string) | fun(any) | any {
+    return fun(handler | any) | any {
+        r.addWSRoute(path, handler);
+        return handler;
+    };
+}
+
 pub fun (r | Router).use(mw | fun(Context, fun() | Response) | Response) | void {
     r.middlewares = r.middlewares.append(mw);
 }
@@ -94,6 +109,41 @@ pub fun (r | Router).resolve(method | string, pathSegments | list<string>) | dic
     while (j < r.children.length()) {
         var child | Router = r.children.get(j);
         var childResult | dict<any> = child.resolve(method, pathSegments);
+        if (childResult["found"] == true) {
+            var combined | list<any> = concatLists(r.middlewares, childResult["middlewares"]);
+            return {
+                "found": true,
+                "handler": childResult["handler"],
+                "params": childResult["params"],
+                "pattern": childResult["pattern"],
+                "middlewares": combined
+            };
+        }
+        j = j + 1;
+    }
+    return { "found": false };
+}
+
+pub fun (r | Router).resolveWS(pathSegments | list<string>) | dict<any> {
+    var i | int = 0;
+    while (i < r.wsRoutes.length()) {
+        var rt | WSRoute = r.wsRoutes.get(i);
+        var result | dict<any> = matchWSRoute(rt, pathSegments);
+        if (result["matched"] == true) {
+            return {
+                "found": true,
+                "handler": rt.handler,
+                "params": result["params"],
+                "pattern": rt.pattern,
+                "middlewares": r.middlewares
+            };
+        }
+        i = i + 1;
+    }
+    var j | int = 0;
+    while (j < r.children.length()) {
+        var child | Router = r.children.get(j);
+        var childResult | dict<any> = child.resolveWS(pathSegments);
         if (childResult["found"] == true) {
             var combined | list<any> = concatLists(r.middlewares, childResult["middlewares"]);
             return {

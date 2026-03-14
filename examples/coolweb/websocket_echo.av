@@ -1,0 +1,31 @@
+pckg main;
+
+import std.coolweb as cw;
+import std.websocket as ws;
+
+var app | cw.App = cw.newApp();
+
+@app.websocket("/echo")
+async fun echo(ctx | cw.Context, conn | ws.WebSocket) | void {
+    print("WebSocket connected: ${conn.id}");
+    while (conn.isOpen) {
+        try {
+            var msg | ws.Message = await conn.receive();
+            if (msg.isText()) {
+                await conn.sendText("echo: " + msg.text);
+            } else if (msg.isBinary()) {
+                await conn.sendBytes(msg.data);
+            } else if (msg.isClose()) {
+                print("Client disconnected: ${conn.id}");
+                break;
+            }
+        } catch (e | error) {
+            print("Error: " + errorMessage(e));
+            break;
+        }
+    }
+}
+
+async fun main() | void {
+    await app.run(8080);
+}

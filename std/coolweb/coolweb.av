@@ -1,6 +1,7 @@
 pckg std.coolweb;
 
 import std.http.server as http;
+import std.websocket as ws;
 
 struct coolweb {}
 
@@ -78,6 +79,17 @@ pub fun (app | App).mount(child | Router) | void {
     app.router.mount(child);
 }
 
+pub fun (app | App).addWSRoute(path | string, handler | any) | void {
+    app.router.addWSRoute(path, handler);
+}
+
+pub fun (app | App).websocket(path | string) | fun(any) | any {
+    return fun(handler | any) | any {
+        app.addWSRoute(path, handler);
+        return handler;
+    };
+}
+
 pub fun (app | App).onError(handler | fun(Context, error) | Response) | void {
     app.errorHandler = handler;
 }
@@ -134,6 +146,42 @@ async fun dispatchRequest(app | App, raw | dict<any>) | void {
 
     var pathSegments | list<string> = splitPathStr(pathStr);
     var method | string = raw["method"];
+
+    if (isWebSocketUpgrade(raw)) {
+        var wsMatched | dict<any> = app.router.resolveWS(pathSegments);
+        if (wsMatched["found"] == true) {
+            var connHandle | any = raw["__handle"];
+            var wsConn | ws.WebSocket = await ws.upgradeRequest(connHandle);
+            var wsHandler | fun(Context, ws.WebSocket) | Future<void> = wsMatched["handler"];
+            var wsParams | dict<string> = wsMatched["params"];
+            var wsReq | Request = Request{
+                method = method,
+                path = pathStr,
+                fullPath = fullPath,
+                headers = raw["headers"],
+                body = raw["body"]
+            };
+            var wsCtx | Context = Context{
+                request = wsReq,
+                params = wsParams,
+                query = parseQueryString(queryStr),
+                cookies = parseCookieHeader(raw["headers"]),
+                state = {},
+                _connHandle = connHandle
+            };
+            try {
+                await wsHandler(wsCtx, wsConn);
+            } catch (e | error) {
+                print("event=ws_error path=${fullPath} error=" + errorMessage(e));
+            }
+            if (wsConn.isOpen) {
+                await wsConn.close(1000, "");
+            }
+            return;
+        }
+        await http.rawRespond(raw["__handle"], 404, {"Content-Type": "text/plain"}, fromString("404 Not Found"));
+        return;
+    }
 
     var matched | dict<any> = app.router.resolve(method, pathSegments);
 
@@ -272,6 +320,15 @@ fun concatMiddlewares(a | list<any>, b | list<any>) | list<any> {
         i = i + 1;
     }
     return result;
+}
+
+fun isWebSocketUpgrade(raw | dict<any>) | bool {
+    var headers | dict<string> = raw["headers"];
+    if (!headers.has("Upgrade")) {
+        return false;
+    }
+    var upgradeVal | string = headers["Upgrade"];
+    return upgradeVal.toLowerCase() == "websocket";
 }
 
 fun defaultErrorHandler(ctx | Context, e | error) | Response {

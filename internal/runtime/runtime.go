@@ -21,6 +21,7 @@ import (
 	_ "avenir/internal/runtime/builtins/strings"
 	_ "avenir/internal/runtime/builtins/time"
 	_ "avenir/internal/runtime/builtins/tls"
+	_ "avenir/internal/runtime/builtins/ws"
 	"avenir/internal/value"
 )
 

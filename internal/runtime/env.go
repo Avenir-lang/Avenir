@@ -28,6 +28,7 @@ type Env struct {
 	httpService     *httpService
 	sqlService      *sqlService
 	tlsService      *tlsService
+	wsService       *wsService
 	execRoot        string
 }
 
@@ -59,6 +60,11 @@ func (e *Env) SQL() builtins.SQL {
 // TLS returns the TLS service. Implements builtins.Env interface.
 func (e *Env) TLS() builtins.TLS {
 	return e.tlsService
+}
+
+// WS returns the WebSocket service. Implements builtins.Env interface.
+func (e *Env) WS() builtins.WS {
+	return e.wsService
 }
 
 // ExecRoot returns the execution root directory for relative file paths.
@@ -159,25 +165,29 @@ func (s *stdIO) ReadLine() (string, error) {
 // DefaultEnv returns an Env with standard implementations
 // (printing to stdout, real filesystem, etc.).
 func DefaultEnv() *Env {
+	httpSvc := newHTTPService()
 	return &Env{
 		ioService:   newStdIO(),
 		netService:  newNetService(),
 		fsService:   newFSService(),
-		httpService: newHTTPService(),
+		httpService: httpSvc,
 		sqlService:  newSQLService(),
 		tlsService:  newTLSService(),
+		wsService:   newWSService(httpSvc),
 	}
 }
 
 // NewEnv creates a new Env with the given IO service.
 // This is useful for tests that need to provide a custom IO implementation.
 func NewEnv(io builtinsio.IO) *Env {
+	httpSvc := newHTTPService()
 	return &Env{
 		ioService:   io,
 		netService:  newNetService(),
 		fsService:   newFSService(),
-		httpService: newHTTPService(),
+		httpService: httpSvc,
 		sqlService:  newSQLService(),
 		tlsService:  newTLSService(),
+		wsService:   newWSService(httpSvc),
 	}
 }
