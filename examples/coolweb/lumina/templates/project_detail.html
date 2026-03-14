@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}{{ project.title }}{% endblock %}
+{% block content %}
+
+<section class="section">
+    <div class="container" style="max-width: 800px;">
+        <a href="/projects" style="display: inline-flex; align-items: center; gap: 6px; color: var(--text-muted); font-size: 0.9rem; margin-bottom: 2rem; transition: color 0.25s;">
+            &larr; Back to Projects
+        </a>
+
+        <div class="animate-in">
+            {# ── Hero Banner ── #}
+            <div style="height: 240px; border-radius: var(--radius); margin-bottom: 2rem; background: linear-gradient(135deg, {{ project.color1 }}, {{ project.color2 }}); display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden;">
+                <div style="position: absolute; inset: 0; background: radial-gradient(circle at 30% 70%, rgba(255,255,255,0.1), transparent);"></div>
+                <span style="font-size: 3.5rem; font-weight: 800; color: rgba(255,255,255,0.2); letter-spacing: -0.03em; position: relative;">{{ project.title }}</span>
+            </div>
+
+            {# ── Title & Year ── #}
+            <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap;">
+                <h1 style="font-size: 2.25rem; font-weight: 800; letter-spacing: -0.03em;">{{ project.title }}</h1>
+                <span class="badge">{{ project.year }}</span>
+            </div>
+
+            {# ── Description ── #}
+            <p style="font-size: 1.1rem; line-height: 1.8; color: var(--text-muted); margin-bottom: 2rem;">
+                {{ project.description }}
+            </p>
+
+            {# ── Tags ── #}
+            <div class="card" style="margin-bottom: 1.5rem;">
+                <h3 style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 1rem;">Tags</h3>
+                <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                    {% for tag in project.tags %}
+                    <a href="/projects?tag={{ tag }}" class="badge" style="text-decoration: none;">{{ tag }}</a>
+                    {% endfor %}
+                </div>
+            </div>
+
+            {# ── Tech Stack ── #}
+            <div class="card">
+                <h3 style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 1rem;">Tech Stack</h3>
+                <div style="display: flex; flex-wrap: wrap; gap: 0.75rem;">
+                    {% for tech in project.tech %}
+                    <span style="padding: 8px 16px; border-radius: var(--radius-sm); background: var(--bg); border: 1px solid var(--border); font-size: 0.9rem; font-weight: 500;">{{ tech }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+
+            {# ── API Link ── #}
+            <div style="margin-top: 2rem; padding-top: 2rem; border-top: 1px solid var(--border); display: flex; gap: 1rem; flex-wrap: wrap;">
+                <a href="/api/projects/{{ project.slug }}" class="btn btn-outline" style="font-size: 0.85rem;">
+                    View JSON &rarr;
+                </a>
+                <a href="/projects" class="btn btn-outline" style="font-size: 0.85rem;">
+                    All Projects
+                </a>
+            </div>
+        </div>
+    </div>
+</section>
+
+{% endblock %}

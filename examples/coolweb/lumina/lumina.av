@@ -1,0 +1,299 @@
+pckg main;
+
+import std.coolweb as cw;
+import std.websocket as ws;
+
+var app | cw.App = cw.newApp();
+app.setTemplates("templates/");
+
+var apiRouter | cw.Router = cw.newRouter("/api");
+
+var visitorHub | ws.Hub = ws.newHub();
+
+fun getProjects() | list<dict<any>> {
+    return [
+        {
+            "slug": "aurora-ui",
+            "title": "Aurora UI",
+            "description": "A modern component library built with Avenir, featuring glassmorphism effects, fluid animations, and full dark mode support.",
+            "tags": ["ui", "components", "design"],
+            "tech": ["Avenir", "CoolWeb", "CSS3"],
+            "color1": "#6366f1",
+            "color2": "#a855f7",
+            "year": "2026"
+        },
+        {
+            "slug": "dataflow",
+            "title": "DataFlow",
+            "description": "Real-time data pipeline framework with visual graph editor. Process millions of events per second with back-pressure support.",
+            "tags": ["data", "async", "backend"],
+            "tech": ["Avenir", "WebSocket", "SQL"],
+            "color1": "#06b6d4",
+            "color2": "#3b82f6",
+            "year": "2025"
+        },
+        {
+            "slug": "cryptovault",
+            "title": "CryptoVault",
+            "description": "End-to-end encrypted file storage with zero-knowledge architecture. Share securely with granular access controls.",
+            "tags": ["security", "crypto", "backend"],
+            "tech": ["Avenir", "TLS", "Crypto"],
+            "color1": "#f43f5e",
+            "color2": "#ec4899",
+            "year": "2026"
+        },
+        {
+            "slug": "pulse-analytics",
+            "title": "Pulse Analytics",
+            "description": "Lightweight, privacy-first web analytics dashboard. Track page views, sessions, and events without cookies.",
+            "tags": ["analytics", "web", "frontend"],
+            "tech": ["Avenir", "CoolWeb", "WebSocket"],
+            "color1": "#10b981",
+            "color2": "#06b6d4",
+            "year": "2025"
+        },
+        {
+            "slug": "nimbus-chat",
+            "title": "Nimbus Chat",
+            "description": "WebSocket-powered team messenger with channels, threads, and file sharing. Built entirely on CoolWeb.",
+            "tags": ["chat", "async", "web"],
+            "tech": ["Avenir", "WebSocket", "Sessions"],
+            "color1": "#f59e0b",
+            "color2": "#f43f5e",
+            "year": "2026"
+        },
+        {
+            "slug": "terravision",
+            "title": "TerraVision",
+            "description": "Geospatial data visualization toolkit with tile server and interactive map components.",
+            "tags": ["data", "frontend", "design"],
+            "tech": ["Avenir", "CoolWeb", "SQL"],
+            "color1": "#8b5cf6",
+            "color2": "#6366f1",
+            "year": "2025"
+        }
+    ];
+}
+
+fun getTeam() | list<dict<string>> {
+    return [
+        {
+            "name": "Elena Marchetti",
+            "role": "Lead Architect",
+            "bio": "Designed the CoolWeb framework core and async runtime. Passionate about developer ergonomics.",
+            "initials": "EM"
+        },
+        {
+            "name": "Kai Tanaka",
+            "role": "Frontend Lead",
+            "bio": "Template engine author and CSS wizard. Believes every pixel matters.",
+            "initials": "KT"
+        },
+        {
+            "name": "Oksana Shevchenko",
+            "role": "Backend Lead",
+            "bio": "WebSocket, TLS, and SQL module author. Performance is a feature.",
+            "initials": "OS"
+        },
+        {
+            "name": "Marcus Webb",
+            "role": "Developer Relations",
+            "bio": "Documentation, examples, and community. Making Avenir accessible to everyone.",
+            "initials": "MW"
+        }
+    ];
+}
+
+fun findProjectBySlug(slug | string) | dict<any> {
+    var projects | list<dict<any>> = getProjects();
+    var i | int = 0;
+    while (i < projects.length()) {
+        var p | dict<any> = projects.get(i);
+        if (p["slug"] == slug) {
+            return p;
+        }
+        i = i + 1;
+    }
+    return {};
+}
+
+fun filterProjectsByTag(tag | string) | list<dict<any>> {
+    var projects | list<dict<any>> = getProjects();
+    if (tag == "" || tag == "all") {
+        return projects;
+    }
+    var result | list<dict<any>> = [];
+    var i | int = 0;
+    while (i < projects.length()) {
+        var p | dict<any> = projects.get(i);
+        var tags | list<string> = p["tags"];
+        var j | int = 0;
+        var found | bool = false;
+        while (j < tags.length()) {
+            if (tags.get(j) == tag) {
+                found = true;
+            }
+            j = j + 1;
+        }
+        if (found) {
+            result = result.append(p);
+        }
+        i = i + 1;
+    }
+    return result;
+}
+
+fun getAllTags() | list<string> {
+    return ["all", "ui", "components", "design", "data", "async", "backend", "security", "crypto", "analytics", "web", "frontend", "chat"];
+}
+
+@app.get("/")
+fun index(ctx | cw.Context) | cw.Response {
+    var features | list<dict<string>> = [
+        {
+            "icon": "~",
+            "title": "Async-First",
+            "desc": "Built on green threads and non-blocking IO. Handle thousands of connections with ease."
+        },
+        {
+            "icon": "@",
+            "title": "Decorator Routing",
+            "desc": "Clean, expressive route definitions with decorators. No boilerplate, just handlers."
+        },
+        {
+            "icon": "#",
+            "title": "Template Engine",
+            "desc": "Jinja-like templates with inheritance, loops, conditions, and auto-escaping."
+        }
+    ];
+    return ctx.render("index.html", {
+        "title": "Lumina",
+        "features": features,
+        "projectCount": 6,
+        "visitors": visitorHub.count()
+    });
+}
+
+@app.get("/projects")
+fun projectsPage(ctx | cw.Context) | cw.Response {
+    var tag | string = "";
+    if (ctx.query.has("tag")) {
+        tag = ctx.query["tag"];
+    }
+    var projects | list<dict<any>> = filterProjectsByTag(tag);
+    return ctx.render("projects.html", {
+        "title": "Projects",
+        "projects": projects,
+        "tags": getAllTags(),
+        "activeTag": tag,
+        "visitors": visitorHub.count()
+    });
+}
+
+@app.get("/projects/:slug")
+fun projectDetail(ctx | cw.Context) | cw.Response {
+    var slug | string = ctx.params["slug"];
+    var project | dict<any> = findProjectBySlug(slug);
+    if (!project.has("slug")) {
+        return ctx.render("404.html", {
+            "title": "Not Found",
+            "message": "Project not found",
+            "visitors": visitorHub.count()
+        }, 404);
+    }
+    return ctx.render("project_detail.html", {
+        "title": project["title"],
+        "project": project,
+        "visitors": visitorHub.count()
+    });
+}
+
+@app.get("/about")
+fun aboutPage(ctx | cw.Context) | cw.Response {
+    return ctx.render("about.html", {
+        "title": "About",
+        "team": getTeam(),
+        "visitors": visitorHub.count()
+    });
+}
+
+@app.get("/contact")
+fun contactPage(ctx | cw.Context) | cw.Response {
+    return ctx.render("contact.html", {
+        "title": "Contact",
+        "visitors": visitorHub.count()
+    });
+}
+
+@apiRouter.get("/projects")
+fun apiProjects(ctx | cw.Context) | cw.Response {
+    var tag | string = "";
+    if (ctx.query.has("tag")) {
+        tag = ctx.query["tag"];
+    }
+    var projects | list<dict<any>> = filterProjectsByTag(tag);
+    return ctx.json({ "data": projects, "count": projects.length() });
+}
+
+@apiRouter.get("/projects/:slug")
+fun apiProjectDetail(ctx | cw.Context) | cw.Response {
+    var slug | string = ctx.params["slug"];
+    var project | dict<any> = findProjectBySlug(slug);
+    if (!project.has("slug")) {
+        return ctx.json({ "error": "not found" }, 404);
+    }
+    return ctx.json({ "data": project });
+}
+
+@apiRouter.post("/contact")
+fun apiContact(ctx | cw.Context) | cw.Response {
+    var body | any = ctx.jsonBody();
+    return ctx.json({
+        "success": true,
+        "message": "Thank you for reaching out! We will get back to you soon."
+    });
+}
+
+async fun visitorWs(ctx | cw.Context, conn | ws.WebSocket) | void {
+    visitorHub.add(conn);
+    var count | int = visitorHub.count();
+    await visitorHub.broadcast("${count}");
+    while (conn.isOpen) {
+        try {
+            var msg | ws.Message = await conn.receive();
+            if (msg.isClose()) {
+                break;
+            }
+        } catch (e | error) {
+            break;
+        }
+    }
+    visitorHub.remove(conn);
+    visitorHub.cleanup();
+    var newCount | int = visitorHub.count();
+    await visitorHub.broadcast("${newCount}");
+}
+
+app.addWSRoute("/ws/visitors", visitorWs);
+
+app.onError(fun(ctx | cw.Context, e | error) | cw.Response {
+    return ctx.render("404.html", {
+        "title": "Error",
+        "message": errorMessage(e),
+        "visitors": 0
+    }, 500);
+});
+
+var corsConfig | cw.CorsConfig = cw.newCorsConfigWithOptions(
+    ["*"],
+    ["GET", "POST", "OPTIONS"],
+    ["Content-Type"]
+);
+apiRouter.use(cw.corsMiddleware(corsConfig));
+
+async fun main() | void {
+    app.use(cw.newLogger(includeQuery = true, skipPaths = ["/ws/visitors"]));
+    app.mount(apiRouter);
+    print("Lumina running at http://localhost:3000");
+    await app.run(3000);
+}

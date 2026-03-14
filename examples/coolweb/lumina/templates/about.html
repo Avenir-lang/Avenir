@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}About{% endblock %}
+{% block content %}
+
+<section class="section">
+    <div class="container">
+        <div class="text-center mb-4 animate-in">
+            <span class="badge mb-3" style="display: inline-block;">Who We Are</span>
+            <h1 style="font-size: 2.5rem; font-weight: 800; letter-spacing: -0.03em;">
+                Meet the <span class="text-gradient">Team</span>
+            </h1>
+            <p class="text-muted mt-2" style="max-width: 550px; margin-left: auto; margin-right: auto;">
+                A small group of passionate engineers building the future of web development with Avenir.
+            </p>
+        </div>
+
+        {# ── Team Grid ── #}
+        <div class="grid grid-4" style="margin-bottom: 4rem;">
+            {% for member in team %}
+            <div class="card text-center animate-in" style="padding: 2rem 1.5rem;">
+                <div style="width: 72px; height: 72px; border-radius: 50%; background: var(--gradient); display: flex; align-items: center; justify-content: center; margin: 0 auto 1.25rem; font-size: 1.25rem; font-weight: 700; color: #fff; box-shadow: 0 4px 20px rgba(99,102,241,0.3);">
+                    {{ member.initials }}
+                </div>
+                <h3 style="font-size: 1.05rem; font-weight: 600; margin-bottom: 0.25rem;">{{ member.name }}</h3>
+                <p style="font-size: 0.8rem; color: var(--accent-1); font-weight: 500; margin-bottom: 0.75rem;">{{ member.role }}</p>
+                <p class="text-muted" style="font-size: 0.85rem; line-height: 1.6;">{{ member.bio }}</p>
+            </div>
+            {% endfor %}
+        </div>
+
+        {# ── Values Section ── #}
+        <div class="text-center mb-4">
+            <h2 style="font-size: 2rem; font-weight: 700; letter-spacing: -0.02em;">Our <span class="text-gradient">Values</span></h2>
+        </div>
+        <div class="grid grid-3">
+            <div class="card">
+                <div style="font-size: 1.75rem; margin-bottom: 1rem;">&#9889;</div>
+                <h3 style="font-size: 1.05rem; font-weight: 600; margin-bottom: 0.5rem;">Performance First</h3>
+                <p class="text-muted" style="font-size: 0.85rem; line-height: 1.6;">
+                    Every decision is measured against its impact on latency and throughput. Async by default, fast by design.
+                </p>
+            </div>
+            <div class="card">
+                <div style="font-size: 1.75rem; margin-bottom: 1rem;">&#9881;</div>
+                <h3 style="font-size: 1.05rem; font-weight: 600; margin-bottom: 0.5rem;">Developer Joy</h3>
+                <p class="text-muted" style="font-size: 0.85rem; line-height: 1.6;">
+                    APIs should be intuitive. Error messages should be helpful. Documentation should be thorough. No exceptions.
+                </p>
+            </div>
+            <div class="card">
+                <div style="font-size: 1.75rem; margin-bottom: 1rem;">&#128274;</div>
+                <h3 style="font-size: 1.05rem; font-weight: 600; margin-bottom: 0.5rem;">Security Built In</h3>
+                <p class="text-muted" style="font-size: 0.85rem; line-height: 1.6;">
+                    Auto-escaping, TLS defaults, typed errors, and secure sessions. Safety is not an afterthought.
+                </p>
+            </div>
+        </div>
+
+        {# ── Tech Stack ── #}
+        <div style="margin-top: 4rem;">
+            <div class="card" style="padding: 3rem; background: var(--gradient-subtle); border-color: rgba(99,102,241,0.2);">
+                <div class="text-center">
+                    <h2 style="font-size: 1.5rem; font-weight: 700; margin-bottom: 1rem;">Built With</h2>
+                    <div style="display: flex; flex-wrap: wrap; gap: 1rem; justify-content: center;">
+                        <span style="padding: 10px 20px; border-radius: var(--radius-sm); background: var(--bg); border: 1px solid var(--border); font-weight: 500;">Avenir</span>
+                        <span style="padding: 10px 20px; border-radius: var(--radius-sm); background: var(--bg); border: 1px solid var(--border); font-weight: 500;">CoolWeb</span>
+                        <span style="padding: 10px 20px; border-radius: var(--radius-sm); background: var(--bg); border: 1px solid var(--border); font-weight: 500;">WebSocket</span>
+                        <span style="padding: 10px 20px; border-radius: var(--radius-sm); background: var(--bg); border: 1px solid var(--border); font-weight: 500;">Template Engine</span>
+                        <span style="padding: 10px 20px; border-radius: var(--radius-sm); background: var(--bg); border: 1px solid var(--border); font-weight: 500;">Sessions</span>
+                        <span style="padding: 10px 20px; border-radius: var(--radius-sm); background: var(--bg); border: 1px solid var(--border); font-weight: 500;">CORS</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+{% endblock %}

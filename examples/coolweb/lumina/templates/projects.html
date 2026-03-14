@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Projects{% endblock %}
+{% block content %}
+
+<section class="section">
+    <div class="container">
+        <div class="text-center mb-4 animate-in">
+            <span class="badge mb-3" style="display: inline-block;">Portfolio</span>
+            <h1 style="font-size: 2.5rem; font-weight: 800; letter-spacing: -0.03em;">
+                Our <span class="text-gradient">Projects</span>
+            </h1>
+            <p class="text-muted mt-2" style="max-width: 500px; margin-left: auto; margin-right: auto;">
+                Explore our work. Filter by tag or browse them all.
+            </p>
+        </div>
+
+        {# ── Tag Filter ── #}
+        <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: center; margin-bottom: 3rem;" class="animate-in delay-1">
+            {% for tag in tags %}
+            <a href="{% if tag == "all" %}/projects{% else %}/projects?tag={{ tag }}{% endif %}"
+               style="padding: 6px 16px; border-radius: 20px; font-size: 0.8rem; font-weight: 500; transition: all 0.25s;
+                      {% if tag == activeTag %}background: var(--gradient); color: #fff; border: 1px solid transparent;
+                      {% elif activeTag == "" %}{% if tag == "all" %}background: var(--gradient); color: #fff; border: 1px solid transparent;
+                      {% else %}background: var(--bg-card); color: var(--text-muted); border: 1px solid var(--border);{% endif %}
+                      {% else %}background: var(--bg-card); color: var(--text-muted); border: 1px solid var(--border);{% endif %}">
+                {{ tag }}
+            </a>
+            {% endfor %}
+        </div>
+
+        {# ── Project Grid ── #}
+        <div class="grid grid-3">
+            {% for project in projects %}
+            <a href="/projects/{{ project.slug }}" class="card animate-in" style="text-decoration: none; color: inherit; display: flex; flex-direction: column;">
+                <div style="height: 160px; border-radius: 8px; margin-bottom: 1.25rem; background: linear-gradient(135deg, {{ project.color1 }}, {{ project.color2 }}); display: flex; align-items: center; justify-content: center;">
+                    <span style="font-size: 2.5rem; font-weight: 800; color: rgba(255,255,255,0.25); letter-spacing: -0.03em;">{{ project.title }}</span>
+                </div>
+                <h3 style="font-size: 1.15rem; font-weight: 600; margin-bottom: 0.5rem;">{{ project.title }}</h3>
+                <p class="text-muted" style="font-size: 0.85rem; line-height: 1.6; flex: 1;">{{ project.description }}</p>
+                <div style="display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 1rem;">
+                    {% for tag in project.tags %}
+                    <span class="badge">{{ tag }}</span>
+                    {% endfor %}
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+
+        {% if projects == [] %}
+        <div class="text-center" style="padding: 4rem 0;">
+            <p class="text-muted" style="font-size: 1.1rem;">No projects found for this tag.</p>
+            <a href="/projects" class="btn btn-outline" style="margin-top: 1rem;">Show All</a>
+        </div>
+        {% endif %}
+    </div>
+</section>
+
+{% endblock %}

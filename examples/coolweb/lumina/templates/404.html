@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}{{ title | default("Not Found") }}{% endblock %}
+{% block content %}
+
+<section class="section" style="min-height: 60vh; display: flex; align-items: center;">
+    <div class="container text-center">
+        <div class="animate-in">
+            <div style="font-size: 8rem; font-weight: 900; line-height: 1; margin-bottom: 1rem; background: var(--gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; opacity: 0.3;">
+                404
+            </div>
+            <h1 style="font-size: 2rem; font-weight: 700; margin-bottom: 1rem;">
+                Page Not Found
+            </h1>
+            <p class="text-muted" style="max-width: 400px; margin: 0 auto 2rem; font-size: 1.05rem;">
+                {% if message %}{{ message }}{% else %}The page you're looking for doesn't exist or has been moved.{% endif %}
+            </p>
+            <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
+                <a href="/" class="btn btn-primary">Go Home</a>
+                <a href="/projects" class="btn btn-outline">Browse Projects</a>
+            </div>
+        </div>
+    </div>
+</section>
+
+{% endblock %}

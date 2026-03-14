@@ -6722,3 +6722,197 @@ fun main() | void {
 		}
 	}
 }
+
+func TestCompileWorld_LuminaShowcase(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	realStd, err := filepath.Abs("../../std")
+	if err != nil {
+		t.Fatalf("failed to resolve std path: %v", err)
+	}
+	if _, err := os.Stat(realStd); os.IsNotExist(err) {
+		t.Skip("std/ directory not found, skipping lumina integration test")
+	}
+	if err := os.Symlink(realStd, filepath.Join(tmpDir, "std")); err != nil {
+		t.Fatalf("failed to symlink std: %v", err)
+	}
+
+	mainFile := filepath.Join(tmpDir, "main.av")
+	mainContent := `pckg main;
+
+import std.coolweb as cw;
+import std.websocket as ws;
+
+var app | cw.App = cw.newApp();
+
+var apiRouter | cw.Router = cw.newRouter("/api");
+
+var visitorHub | ws.Hub = ws.newHub();
+
+fun getProjects() | list<dict<any>> {
+    return [
+        {
+            "slug": "aurora",
+            "title": "Aurora UI",
+            "description": "A component library",
+            "tags": ["ui", "design"],
+            "tech": ["Avenir", "CoolWeb"],
+            "color1": "#6366f1",
+            "color2": "#a855f7",
+            "year": "2026"
+        }
+    ];
+}
+
+fun getTeam() | list<dict<string>> {
+    return [
+        { "name": "Alice", "role": "Lead", "bio": "Architect", "initials": "AL" }
+    ];
+}
+
+fun findProjectBySlug(slug | string) | dict<any> {
+    var projects | list<dict<any>> = getProjects();
+    var i | int = 0;
+    while (i < projects.length()) {
+        var p | dict<any> = projects.get(i);
+        if (p["slug"] == slug) {
+            return p;
+        }
+        i = i + 1;
+    }
+    return {};
+}
+
+@app.get("/")
+fun index(ctx | cw.Context) | cw.Response {
+    return ctx.text("Lumina Home");
+}
+
+@app.get("/projects")
+fun projectsPage(ctx | cw.Context) | cw.Response {
+    var tag | string = "";
+    if (ctx.query.has("tag")) {
+        tag = ctx.query["tag"];
+    }
+    return ctx.json({ "tag": tag, "projects": getProjects() });
+}
+
+@app.get("/projects/:slug")
+fun projectDetail(ctx | cw.Context) | cw.Response {
+    var slug | string = ctx.params["slug"];
+    var project | dict<any> = findProjectBySlug(slug);
+    if (!project.has("slug")) {
+        return ctx.text("not found", 404);
+    }
+    return ctx.json({ "data": project });
+}
+
+@app.get("/about")
+fun aboutPage(ctx | cw.Context) | cw.Response {
+    return ctx.json({ "team": getTeam() });
+}
+
+@apiRouter.get("/projects")
+fun apiProjects(ctx | cw.Context) | cw.Response {
+    return ctx.json({ "data": getProjects() });
+}
+
+@apiRouter.post("/contact")
+fun apiContact(ctx | cw.Context) | cw.Response {
+    var body | any = ctx.jsonBody();
+    return ctx.json({ "success": true, "message": "thanks" });
+}
+
+async fun visitorWs(ctx | cw.Context, conn | ws.WebSocket) | void {
+    visitorHub.add(conn);
+    var count | int = visitorHub.count();
+    await visitorHub.broadcast("${count}");
+    while (conn.isOpen) {
+        try {
+            var msg | ws.Message = await conn.receive();
+            if (msg.isClose()) {
+                break;
+            }
+        } catch (e | error) {
+            break;
+        }
+    }
+    visitorHub.remove(conn);
+    visitorHub.cleanup();
+}
+
+app.addWSRoute("/ws/visitors", visitorWs);
+
+app.onError(fun(ctx | cw.Context, e | error) | cw.Response {
+    return ctx.text("error: " + errorMessage(e), 500);
+});
+
+var corsConfig | cw.CorsConfig = cw.newCorsConfigWithOptions(
+    ["*"],
+    ["GET", "POST", "OPTIONS"],
+    ["Content-Type"]
+);
+apiRouter.use(cw.corsMiddleware(corsConfig));
+
+fun main() | int {
+    app.use(cw.loggerMiddleware);
+    app.mount(apiRouter);
+    return 0;
+}
+`
+	if err := os.WriteFile(mainFile, []byte(mainContent), 0644); err != nil {
+		t.Fatalf("failed to write main.av: %v", err)
+	}
+
+	world, errs := modules.LoadWorld(mainFile)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Logf("module loading error: %s", e)
+		}
+		t.Fatalf("failed to load world: %d errors", len(errs))
+	}
+
+	typeWorld := &types.World{
+		Modules: make(map[string]*types.ModuleInfo),
+		Entry:   world.Entry,
+	}
+	for modName, modAST := range world.Modules {
+		typeWorld.Modules[modName] = &types.ModuleInfo{
+			Name:  modName,
+			Prog:  modAST.Prog,
+			Scope: nil,
+		}
+	}
+
+	bindings, typeErrs := types.CheckWorldWithBindings(typeWorld)
+	if len(typeErrs) > 0 {
+		for _, e := range typeErrs {
+			t.Logf("type error: %s", e)
+		}
+		t.Fatalf("type checking failed: %d errors", len(typeErrs))
+	}
+
+	entryModInfo := typeWorld.Modules[world.Entry]
+	mod, compileErrs := ir.CompileWorld(typeWorld, entryModInfo, bindings)
+	if len(compileErrs) > 0 {
+		for _, e := range compileErrs {
+			t.Logf("compile error: %s", e)
+		}
+		t.Fatalf("compilation failed: %d errors", len(compileErrs))
+	}
+
+	if mod == nil {
+		t.Fatalf("expected non-nil module")
+	}
+	if mod.MainIndex < 0 {
+		t.Fatalf("expected main function index >= 0")
+	}
+	if mod.InitIndex < 0 {
+		t.Fatalf("expected __init__ (decorators present) but InitIndex = %d", mod.InitIndex)
+	}
+	if len(mod.Globals) < 3 {
+		t.Fatalf("expected at least 3 globals (app, apiRouter, visitorHub), got %d", len(mod.Globals))
+	}
+	t.Logf("Lumina compiled: %d functions, %d globals, main=%d, init=%d",
+		len(mod.Functions), len(mod.Globals), mod.MainIndex, mod.InitIndex)
+}

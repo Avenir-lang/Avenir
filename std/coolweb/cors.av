@@ -10,6 +10,20 @@ pub struct CorsConfig {
     pub maxAge | int = 86400
 }
 
+pub fun newCorsConfig() | CorsConfig {
+    return CorsConfig{};
+}
+
+pub fun newCorsConfigWithOptions(origins | list<string>, methods | list<string>, headers | list<string>, credentials | bool = false, maxAge | int = 86400) | CorsConfig {
+    return CorsConfig{
+        allowOrigins = origins,
+        allowMethods = methods,
+        allowHeaders = headers,
+        allowCredentials = credentials,
+        maxAge = maxAge
+    };
+}
+
 pub fun corsMiddleware(config | CorsConfig) | fun(Context, fun() | Response) | Response {
     return fun(ctx | Context, next | fun() | Response) | Response {
         var origin | string = "*";
